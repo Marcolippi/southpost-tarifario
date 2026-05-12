@@ -108,6 +108,8 @@ const DEFAULTS = {
 };
 
 const STORE_KEY = 'tarifario_southpost_v5';
+const HIST_KEY = 'tarifario_southpost_v5_historial';
+const HIST_MAX = 50;
 
 let state = loadState();
 
@@ -532,18 +534,37 @@ function cerrarModal() {
 function confirmarExportPDF() {
   const nombre = document.getElementById('modalClientName').value.trim();
   cerrarModal();
-  generarPDF(nombre || 'Sin especificar');
+  const cliente = nombre || 'Sin especificar';
+  // 1) Generar PDF
+  generarPDF(cliente);
+  // 2) Archivar al historial
+  archivarCotizacion(cliente);
+  // 3) Descargar Excel
+  exportarExcel(cliente);
+  // 4) Refrescar historial visible
+  renderHistorial();
+  toast('Cotización guardada al historial · PDF y Excel descargados');
 }
 
-// Cerrar modal con click fuera o Escape
+// Cerrar modales con click fuera o Escape
 document.addEventListener('click', e => {
   if (e.target.id === 'modalPDF') cerrarModal();
+  if (e.target.id === 'modalGuardar') cerrarModalGuardar();
+  if (e.target.id === 'modalDetalle') cerrarModalDetalle();
 });
 document.addEventListener('keydown', e => {
-  const modal = document.getElementById('modalPDF');
-  if (!modal || !modal.classList.contains('active')) return;
-  if (e.key === 'Escape') cerrarModal();
-  if (e.key === 'Enter') confirmarExportPDF();
+  const modalPDF = document.getElementById('modalPDF');
+  const modalGuardar = document.getElementById('modalGuardar');
+  const modalDetalle = document.getElementById('modalDetalle');
+  if (modalPDF && modalPDF.classList.contains('active')) {
+    if (e.key === 'Escape') cerrarModal();
+    if (e.key === 'Enter') confirmarExportPDF();
+  } else if (modalGuardar && modalGuardar.classList.contains('active')) {
+    if (e.key === 'Escape') cerrarModalGuardar();
+    if (e.key === 'Enter') confirmarGuardarHistorial();
+  } else if (modalDetalle && modalDetalle.classList.contains('active')) {
+    if (e.key === 'Escape') cerrarModalDetalle();
+  }
 });
 
 /* ====================================================
@@ -703,6 +724,474 @@ function generarPDF(nombreCliente) {
 }
 
 /* ====================================================
+   HISTORIAL — Modal Guardar
+   ==================================================== */
+function iniciarGuardarHistorial() {
+  document.getElementById('modalGuardarClientName').value = '';
+  document.getElementById('modalGuardar').classList.add('active');
+  setTimeout(() => document.getElementById('modalGuardarClientName').focus(), 100);
+}
+function cerrarModalGuardar() {
+  document.getElementById('modalGuardar').classList.remove('active');
+}
+function confirmarGuardarHistorial() {
+  const nombre = document.getElementById('modalGuardarClientName').value.trim();
+  cerrarModalGuardar();
+  const cliente = nombre || 'Sin especificar';
+  archivarCotizacion(cliente);
+  exportarExcel(cliente);
+  renderHistorial();
+  toast('Cotización archivada · Excel descargado');
+}
+
+/* ====================================================
+   HISTORIAL — Snapshot, almacenamiento, render
+   ==================================================== */
+function leerHistorial() {
+  try {
+    const s = localStorage.getItem(HIST_KEY);
+    if (s) return JSON.parse(s);
+  } catch(e) {}
+  return [];
+}
+function guardarHistorialEnDisco(historial) {
+  try {
+    localStorage.setItem(HIST_KEY, JSON.stringify(historial));
+  } catch(e) {
+    toast('No se pudo guardar al historial: ' + e.message, true);
+  }
+}
+
+function crearSnapshot(cliente) {
+  // Calcular tarifario actual y totales para guardar
+  const matCostos = window._matCostos || [];
+  const matPrecios = window._matPrecios || [];
+  let totalGuias = 0, costoTotal = 0, precioTotal = 0;
+  for (let ri = 0; ri < RANGOS.length; ri++) {
+    for (let z = 0; z < 4; z++) {
+      const g = state.cotizador[ri][z] || 0;
+      if (g > 0) {
+        totalGuias += g;
+        costoTotal += (matCostos[ri] ? matCostos[ri][z] : 0) * g;
+        precioTotal += (matPrecios[ri] ? matPrecios[ri][z] : 0) * g;
+      }
+    }
+  }
+  return {
+    id: 'cot_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    cliente: cliente,
+    fecha: new Date().toISOString(),
+    estado: JSON.parse(JSON.stringify(state)),
+    resumen: {
+      totalGuias,
+      costoTotal,
+      precioTotal,
+      ganancia: precioTotal - costoTotal,
+      precioPromedio: totalGuias > 0 ? precioTotal / totalGuias : 0,
+    },
+    matPrecios: JSON.parse(JSON.stringify(matPrecios)),
+    matCostos: JSON.parse(JSON.stringify(matCostos)),
+  };
+}
+
+function archivarCotizacion(cliente) {
+  const snapshot = crearSnapshot(cliente);
+  let hist = leerHistorial();
+  hist.unshift(snapshot); // más nuevas arriba
+  if (hist.length > HIST_MAX) hist = hist.slice(0, HIST_MAX);
+  guardarHistorialEnDisco(hist);
+}
+
+function eliminarCotizacion(id) {
+  if (!confirm('¿Eliminar esta cotización del historial? Esta acción no se puede deshacer.')) return;
+  let hist = leerHistorial();
+  hist = hist.filter(c => c.id !== id);
+  guardarHistorialEnDisco(hist);
+  renderHistorial();
+  toast('Cotización eliminada');
+}
+
+function recargarCotizacion(id) {
+  if (!confirm('¿Reemplazar todos los datos actuales con los de esta cotización archivada? Tus cambios actuales sin archivar se perderán.')) return;
+  const hist = leerHistorial();
+  const cot = hist.find(c => c.id === id);
+  if (!cot) return;
+  state = JSON.parse(JSON.stringify(cot.estado));
+  saveState();
+  renderGlobales();
+  renderZonas();
+  renderCapacidades();
+  renderCotizador();
+  recalc();
+  // Scrollear arriba para ver los datos cargados
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Cotización re-cargada en la calculadora');
+}
+
+function descargarExcelDeCotizacion(id) {
+  const hist = leerHistorial();
+  const cot = hist.find(c => c.id === id);
+  if (!cot) return;
+  exportarExcelDesdeSnapshot(cot);
+}
+
+function fmtFechaHumana(iso) {
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`;
+}
+
+function inicialesCliente(nombre) {
+  const t = nombre.trim().split(/\s+/).filter(Boolean);
+  if (t.length === 0) return '?';
+  if (t.length === 1) return t[0].slice(0,2).toUpperCase();
+  return (t[0][0] + t[1][0]).toUpperCase();
+}
+
+function renderHistorial() {
+  const hist = leerHistorial();
+  const empty = document.getElementById('emptyHistorial');
+  const list = document.getElementById('historialList');
+  if (!list || !empty) return;
+
+  if (hist.length === 0) {
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  let html = '';
+  hist.forEach(cot => {
+    const totG = cot.resumen.totalGuias || 0;
+    const totP = cot.resumen.precioTotal || 0;
+    const abs = cot.estado.absorCot || 0;
+    html += `<div class="hist-item">
+      <div class="hist-icon">${inicialesCliente(cot.cliente)}</div>
+      <div class="hist-info">
+        <div class="hist-cliente">${escaparHTML(cot.cliente)}</div>
+        <div class="hist-meta">
+          <span>${fmtFechaHumana(cot.fecha)}</span>
+          <span><strong>${totG.toLocaleString('es-AR')}</strong> guías</span>
+          <span><strong>${fmt(totP)}</strong></span>
+          <span>absorción <strong>${abs}%</strong></span>
+        </div>
+      </div>
+      <div class="hist-actions">
+        <button class="hist-btn" onclick="verDetalleCotizacion('${cot.id}')">Ver detalle</button>
+        <button class="hist-btn primary" onclick="recargarCotizacion('${cot.id}')">Re-cargar</button>
+        <button class="hist-btn" onclick="descargarExcelDeCotizacion('${cot.id}')">Excel</button>
+        <button class="hist-btn danger" onclick="eliminarCotizacion('${cot.id}')">Eliminar</button>
+      </div>
+    </div>`;
+  });
+  list.innerHTML = html;
+}
+
+function escaparHTML(s) {
+  return String(s||'').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+
+/* ====================================================
+   HISTORIAL — Detalle (modal)
+   ==================================================== */
+function verDetalleCotizacion(id) {
+  const hist = leerHistorial();
+  const cot = hist.find(c => c.id === id);
+  if (!cot) return;
+
+  document.getElementById('detalleTitulo').textContent = 'Cotización: ' + cot.cliente;
+  document.getElementById('detalleFecha').textContent = 'Archivada el ' + fmtFechaHumana(cot.fecha);
+
+  const e = cot.estado;
+  const r = cot.resumen;
+
+  let html = '';
+
+  // Bloque resumen
+  html += `<div class="detalle-block">
+    <h4>Resumen</h4>
+    <div class="detalle-grid">
+      <div class="label-d">Total guías</div><div class="value-d">${(r.totalGuias||0).toLocaleString('es-AR')}</div>
+      <div class="label-d">Volumen mensual total operación</div><div class="value-d">${(e.volTotal||0).toLocaleString('es-AR')}</div>
+      <div class="label-d">Margen objetivo</div><div class="value-d">${e.margen||0}%</div>
+      <div class="label-d">% absorción al cliente</div><div class="value-d">${e.absorCot||0}%</div>
+      <div class="label-d">Costo total para vos</div><div class="value-d">${fmt(r.costoTotal||0)}</div>
+      <div class="label-d">Precio total al cliente</div><div class="value-d">${fmt(r.precioTotal||0)}</div>
+      <div class="label-d">Ganancia comercial</div><div class="value-d">${fmt(r.ganancia||0)}</div>
+      <div class="label-d">Precio promedio por guía</div><div class="value-d">${fmt(r.precioPromedio||0)}</div>
+    </div>
+  </div>`;
+
+  // Bloque costos fijos por zona
+  html += `<div class="detalle-block"><h4>Costos fijos por zona</h4>`;
+  html += `<table class="detalle-table"><thead><tr><th>Concepto</th>`;
+  for (let z = 0; z < 4; z++) html += `<th>${ZONAS[z]}</th>`;
+  html += `</tr></thead><tbody>`;
+  const conceptosFijos = ['alquiler','personal','servicios','combustible','seguros','insumos','otros','otros1','otros2','otros3'];
+  const labelMap = {
+    alquiler:'Alquiler', personal:'Personal', servicios:'Servicios',
+    combustible:'Combustible', seguros:'Seguros', insumos:'Insumos',
+    otros:'Otros', otros1:'Otros 1', otros2:'Otros 2', otros3:'Otros 3',
+  };
+  conceptosFijos.forEach(c => {
+    let alguno = false;
+    let fila = `<tr><td>${labelMap[c]||c}</td>`;
+    for (let z = 0; z < 4; z++) {
+      const v = e.costos[z][c];
+      if (v !== undefined && v !== null) {
+        alguno = true;
+        fila += `<td>${fmt(v)}</td>`;
+      } else {
+        fila += `<td style="color:#bbb;">—</td>`;
+      }
+    }
+    fila += `</tr>`;
+    if (alguno) html += fila;
+  });
+  html += `</tbody></table></div>`;
+
+  // Bloque troncal + UM por rango
+  html += `<div class="detalle-block"><h4>Troncal y Última Milla</h4>`;
+  html += `<table class="detalle-table"><thead><tr><th>Concepto</th>`;
+  for (let z = 0; z < 4; z++) html += `<th>${ZONAS[z]}</th>`;
+  html += `</tr></thead><tbody>`;
+  // troncal
+  html += `<tr><td>Troncal x pallet</td>`;
+  for (let z = 0; z < 4; z++) {
+    const v = e.costos[z].troncal;
+    html += `<td>${z===0 ? '<span style="color:#bbb;">—</span>' : (v !== undefined ? fmt(v) : '—')}</td>`;
+  }
+  html += `</tr>`;
+  // UM por rango
+  RANGOS_UM.forEach(rum => {
+    html += `<tr><td>UM ${rum.nombre}</td>`;
+    for (let z = 0; z < 4; z++) {
+      const v = e.costos[z][rum.key];
+      html += `<td>${v !== undefined ? fmt(v) : '—'}</td>`;
+    }
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  // Bloque guías del cliente
+  html += `<div class="detalle-block"><h4>Distribución de guías del cliente</h4>`;
+  html += `<table class="detalle-table"><thead><tr><th>Rango</th>`;
+  for (let z = 0; z < 4; z++) html += `<th>${ZONAS[z]}</th>`;
+  html += `<th>Total</th></tr></thead><tbody>`;
+  RANGOS.forEach((rg, ri) => {
+    const fila = e.cotizador[ri] || [0,0,0,0];
+    const tot = fila.reduce((a,b)=>a+(+b||0), 0);
+    if (tot > 0) {
+      html += `<tr><td>${rg.nombre}</td>`;
+      for (let z = 0; z < 4; z++) html += `<td>${fila[z]||0}</td>`;
+      html += `<td><strong>${tot}</strong></td></tr>`;
+    }
+  });
+  html += `</tbody></table></div>`;
+
+  // Bloque tarifario sugerido
+  html += `<div class="detalle-block"><h4>Tarifario sugerido (precios por guía)</h4>`;
+  html += `<table class="detalle-table"><thead><tr><th>Rango</th>`;
+  for (let z = 0; z < 4; z++) html += `<th>${ZONAS[z]}</th>`;
+  html += `</tr></thead><tbody>`;
+  const matP = cot.matPrecios || [];
+  RANGOS.forEach((rg, ri) => {
+    html += `<tr><td>${rg.nombre}</td>`;
+    for (let z = 0; z < 4; z++) {
+      const v = matP[ri] ? matP[ri][z] : 0;
+      html += `<td>${fmt(v)}</td>`;
+    }
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  document.getElementById('detalleContent').innerHTML = html;
+  document.getElementById('modalDetalle').classList.add('active');
+}
+
+function cerrarModalDetalle() {
+  document.getElementById('modalDetalle').classList.remove('active');
+}
+
+/* ====================================================
+   EXCEL — exportación
+   ==================================================== */
+function exportarExcel(cliente) {
+  const snapshot = crearSnapshot(cliente);
+  exportarExcelDesdeSnapshot(snapshot);
+}
+
+function exportarExcelDesdeSnapshot(cot) {
+  if (typeof XLSX === 'undefined') {
+    toast('Error: librería Excel no cargada', true);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const e = cot.estado;
+  const r = cot.resumen;
+  const matP = cot.matPrecios || [];
+  const matC = cot.matCostos || [];
+
+  // ===== Hoja 1: Resumen =====
+  const fechaArr = new Date(cot.fecha).toLocaleString('es-AR');
+  const resumenData = [
+    ['SOUTHPOST · Cotización archivada'],
+    [],
+    ['Cliente', cot.cliente],
+    ['Fecha y hora', fechaArr],
+    [],
+    ['PARÁMETROS GENERALES'],
+    ['Volumen mensual total (operación)', e.volTotal],
+    ['Margen objetivo', (e.margen||0) + '%'],
+    ['% absorción de costos fijos al cliente', (e.absorCot||0) + '%'],
+    [],
+    ['RESULTADO PARA EL CLIENTE'],
+    ['Total guías', r.totalGuias||0],
+    ['Costo total para Southpost', r.costoTotal||0],
+    ['Precio total al cliente', r.precioTotal||0],
+    ['Ganancia comercial', r.ganancia||0],
+    ['Precio promedio por guía', r.precioPromedio||0],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(resumenData);
+  ws1['!cols'] = [{wch: 42}, {wch: 22}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+
+  // ===== Hoja 2: Costos por zona =====
+  const headerZ = ['Concepto', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV'];
+  const costosData = [
+    ['COSTOS FIJOS MENSUALES'],
+    [],
+    headerZ,
+  ];
+  const conceptosFijos = [
+    ['Alquiler', 'alquiler'],
+    ['Personal', 'personal'],
+    ['Servicios', 'servicios'],
+    ['Combustible', 'combustible'],
+    ['Seguros', 'seguros'],
+    ['Insumos', 'insumos'],
+    ['Otros', 'otros'],
+    ['Otros 1', 'otros1'],
+    ['Otros 2', 'otros2'],
+    ['Otros 3', 'otros3'],
+  ];
+  conceptosFijos.forEach(([label, key]) => {
+    const fila = [label];
+    let alguno = false;
+    for (let z = 0; z < 4; z++) {
+      const v = e.costos[z][key];
+      if (v !== undefined && v !== null) {
+        fila.push(+v);
+        if (v) alguno = true;
+      } else {
+        fila.push('');
+      }
+    }
+    if (alguno) costosData.push(fila);
+  });
+  // Total fijo por zona
+  const totalFila = ['Total fijo zona'];
+  for (let z = 0; z < 4; z++) {
+    const camposFijos = z === 0 ? CAMPOS_ZONA_FIJOS_HUB : CAMPOS_ZONA_FIJOS_DEST;
+    let t = 0;
+    camposFijos.forEach(f => t += +e.costos[z][f.key] || 0);
+    totalFila.push(t);
+  }
+  costosData.push(totalFila);
+
+  // Variables: troncal + UM
+  costosData.push([], ['COSTOS VARIABLES'], [], headerZ);
+  costosData.push(['Troncal por pallet (desde Z.I)', '—', e.costos[1].troncal||0, e.costos[2].troncal||0, e.costos[3].troncal||0]);
+  RANGOS_UM.forEach(rum => {
+    const fila = ['UM ' + rum.nombre];
+    for (let z = 0; z < 4; z++) fila.push(+e.costos[z][rum.key] || 0);
+    costosData.push(fila);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(costosData);
+  ws2['!cols'] = [{wch: 38}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Costos por zona');
+
+  // ===== Hoja 3: Capacidades por pallet =====
+  const capsData = [['Rango', 'ZONA II', 'ZONA III', 'ZONA IV']];
+  RANGOS.forEach((rg, ri) => {
+    capsData.push([rg.nombre, e.capacidades[0][ri]||0, e.capacidades[1][ri]||0, e.capacidades[2][ri]||0]);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(capsData);
+  ws3['!cols'] = [{wch: 22}, {wch: 12}, {wch: 12}, {wch: 12}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Capacidad por pallet');
+
+  // ===== Hoja 4: Guías del cliente =====
+  const guiasData = [['Rango', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV', 'Total']];
+  let totalCols = [0, 0, 0, 0];
+  RANGOS.forEach((rg, ri) => {
+    const fila = e.cotizador[ri] || [0,0,0,0];
+    const tot = fila.reduce((a,b)=>a+(+b||0), 0);
+    guiasData.push([rg.nombre, +fila[0]||0, +fila[1]||0, +fila[2]||0, +fila[3]||0, tot]);
+    for (let z = 0; z < 4; z++) totalCols[z] += +fila[z] || 0;
+  });
+  guiasData.push(['TOTAL', totalCols[0], totalCols[1], totalCols[2], totalCols[3], totalCols.reduce((a,b)=>a+b,0)]);
+  const ws4 = XLSX.utils.aoa_to_sheet(guiasData);
+  ws4['!cols'] = [{wch: 22}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 12}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Guías del cliente');
+
+  // ===== Hoja 5: Tarifario sugerido =====
+  const tarifData = [['Rango', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
+  RANGOS.forEach((rg, ri) => {
+    const fila = matP[ri] || [0,0,0,0];
+    tarifData.push([rg.nombre, +fila[0]||0, +fila[1]||0, +fila[2]||0, +fila[3]||0]);
+  });
+  const ws5 = XLSX.utils.aoa_to_sheet(tarifData);
+  ws5['!cols'] = [{wch: 22}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}];
+  XLSX.utils.book_append_sheet(wb, ws5, 'Tarifario sugerido');
+
+  // ===== Hoja 6: Detalle de cálculo =====
+  const detalleData = [['Rango', 'Zona', 'Cantidad guías', 'Costo unitario', 'Precio unitario', 'Subtotal venta']];
+  let totalDet = 0;
+  for (let ri = 0; ri < RANGOS.length; ri++) {
+    for (let z = 0; z < 4; z++) {
+      const g = +e.cotizador[ri][z] || 0;
+      if (g > 0) {
+        const cu = matC[ri] ? matC[ri][z] : 0;
+        const pu = matP[ri] ? matP[ri][z] : 0;
+        const sub = pu * g;
+        totalDet += sub;
+        detalleData.push([RANGOS[ri].nombre, ZONAS[z], g, +cu, +pu, +sub]);
+      }
+    }
+  }
+  detalleData.push(['', '', '', '', 'TOTAL', totalDet]);
+  const ws6 = XLSX.utils.aoa_to_sheet(detalleData);
+  ws6['!cols'] = [{wch: 22}, {wch: 12}, {wch: 14}, {wch: 16}, {wch: 16}, {wch: 18}];
+  XLSX.utils.book_append_sheet(wb, ws6, 'Detalle');
+
+  // Guardar
+  const fechaArchivo = new Date(cot.fecha).toISOString().slice(0, 10);
+  const safeName = String(cot.cliente).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  XLSX.writeFile(wb, `Tarifario_${safeName || 'cliente'}_${fechaArchivo}.xlsx`);
+}
+
+/* ====================================================
+   TOAST (notificación)
+   ==================================================== */
+let _toastTimer = null;
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('danger', !!isError);
+  el.classList.add('active');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('active'), 3500);
+}
+
+/* ====================================================
    RESET
    ==================================================== */
 function resetAll() {
@@ -723,5 +1212,6 @@ renderGlobales();
 renderZonas();
 renderCapacidades();
 renderCotizador();
+renderHistorial();
 recalc();
 document.getElementById('lastUpdate').textContent = 'Cargado: ' + new Date().toLocaleTimeString('es-AR');

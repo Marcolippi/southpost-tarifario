@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -27,6 +28,7 @@
       <div class="save-state" id="saveState">● GUARDADO</div>
       <div id="lastUpdate">—</div>
       <button class="primary" onclick="iniciarExportPDF()">Exportar PDF</button>
+      <button onclick="iniciarGuardarHistorial()">Guardar al historial</button>
       <button onclick="resetAll()">Reset</button>
     </div>
   </header>
@@ -229,6 +231,23 @@
     <div id="warnContainer"></div>
   </div>
 
+  <!-- 08 — Historial -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-num cyan">08</span>
+      <h2>Historial de cotizaciones</h2>
+      <span class="desc">Últimas 50 cotizaciones archivadas en este navegador</span>
+    </div>
+    <div id="historialContainer">
+      <div class="empty-historial" id="emptyHistorial">
+        <div class="empty-icon">📋</div>
+        <div>No hay cotizaciones archivadas todavía.</div>
+        <div style="font-size:11px; color:#999; margin-top:6px;">Cuando exportes un PDF o uses "Guardar al historial", aparecerán acá.</div>
+      </div>
+      <div id="historialList"></div>
+    </div>
+  </div>
+
   <div class="ornament">· ·  ·</div>
   <div class="footer-note">
     Los datos se guardan automáticamente en este navegador. Para borrarlos usá "Reset".
@@ -253,6 +272,41 @@
   </div>
 </div>
 
+<!-- MODAL guardar al historial (sin PDF) -->
+<div class="modal-backdrop" id="modalGuardar">
+  <div class="modal">
+    <div class="modal-logo">
+      <span class="dot"></span>
+      <span class="text">SOUTHPOST</span>
+    </div>
+    <h2>Guardar al historial</h2>
+    <p class="subtitle">Vamos a archivar esta cotización (sin generar PDF) y descargar el respaldo Excel.</p>
+    <div class="input-label">Nombre del cliente</div>
+    <input type="text" class="client-input" id="modalGuardarClientName" placeholder="Ej: ACME S.A." autocomplete="off">
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="cerrarModalGuardar()">Cancelar</button>
+      <button class="modal-btn primary" onclick="confirmarGuardarHistorial()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL detalle de cotización del historial -->
+<div class="modal-backdrop" id="modalDetalle">
+  <div class="modal modal-wide">
+    <div class="modal-logo">
+      <span class="dot"></span>
+      <span class="text">SOUTHPOST</span>
+    </div>
+    <h2 id="detalleTitulo">Detalle de cotización</h2>
+    <p class="subtitle" id="detalleFecha">—</p>
+    <div id="detalleContent" style="max-height: 60vh; overflow-y: auto; margin-top: 16px;"></div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="cerrarModalDetalle()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <script src="script.js"></script>
+<div class="toast" id="toast"></div>
 </body>
 </html>
