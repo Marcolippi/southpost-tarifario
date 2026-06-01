@@ -16,12 +16,12 @@
 <div class="wrap">
 
   <header class="masthead">
-    <span class="badge">Calculadora · v5.0</span>
+    <span class="badge">Calculadora · v7.0</span>
     <div>
       <div class="logo-mark"><span class="logo-dot"></span> SOUTHPOST</div>
-      <h1>Tarifario <em>dinámico</em></h1>
+      <h1>Tarifario <em>vigente</em></h1>
       <div style="font-family: 'JetBrains Mono',monospace; font-size:11px; color:var(--primary-deep); margin-top:6px; letter-spacing:0.05em;">
-        ÚLTIMA MILLA POR RANGOS · ABSORCIÓN AJUSTABLE · TARIFARIO PERSONALIZADO POR CLIENTE
+        COSTOS FIJOS GENERALES · UM POR ZONA HASTA 25 KG + EXCEDENTE · TARIFARIO GENERAL ESTÁNDAR
       </div>
     </div>
     <div class="meta">
@@ -38,13 +38,13 @@
     <div class="section-head">
       <span class="section-num">01</span>
       <h2>Parámetros generales</h2>
-      <span class="desc">Volumen total y margen objetivo</span>
+      <span class="desc">Volumen mensual operación y margen objetivo</span>
     </div>
     <div class="globals">
       <div class="globals-block">
         <div class="label">Volumen mensual TOTAL operación</div>
         <input type="number" id="volTotal" value="1000" min="1">
-        <div class="helper">Total de guías que procesa tu operación entre TODOS los clientes (denominador para prorratear los fijos)</div>
+        <div class="helper">Total de guías mensuales (denominador para prorratear los costos fijos generales)</div>
       </div>
       <div class="globals-block">
         <div class="label">Margen objetivo (sobre venta)</div>
@@ -56,22 +56,34 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 02 — Costos por zona -->
+  <!-- 02 — Costos fijos generales -->
   <div class="section">
     <div class="section-head">
       <span class="section-num">02</span>
-      <h2>Costos por zona</h2>
-      <span class="desc">Fijos mensuales · Troncal por pallet · Última milla por rangos de peso</span>
+      <h2>Costos fijos generales</h2>
+      <span class="desc">Estructura mensual única — no se divide por zonas</span>
+    </div>
+    <div class="fijos-generales" id="fijosGenerales"></div>
+  </div>
+
+  <div class="step-arrow">▼</div>
+
+  <!-- 03 — Costos variables por zona -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-num">03</span>
+      <h2>Costos variables por zona</h2>
+      <span class="desc">Troncal por pallet + Última milla por kilo (1 a 25 KG + excedente)</span>
     </div>
     <div class="zonas-grid" id="zonasGrid"></div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 03 — Capacidad pallet -->
+  <!-- 04 — Capacidad pallet -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num">03</span>
+      <span class="section-num">04</span>
       <h2>Guías por pallet (capacidad por rango)</h2>
       <span class="desc">Cuántas guías de cada rango entran en un pallet de troncal</span>
     </div>
@@ -82,32 +94,16 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 04 — Distribución guías -->
-  <div class="section">
-    <div class="section-head">
-      <span class="section-num cyan">04</span>
-      <h2>Distribución de guías del cliente</h2>
-      <span class="desc">Cantidad de guías que el cliente despacha por rango y zona</span>
-    </div>
-    <div style="background:white; border:1px solid var(--rule); padding:18px; border-radius:2px;">
-      <div style="overflow-x:auto;">
-        <table class="cot-input" id="tablaCotizador"></table>
-      </div>
-    </div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
   <!-- 05 — Absorción -->
   <div class="section">
     <div class="section-head">
       <span class="section-num cyan">05</span>
       <h2>Absorción de costos fijos</h2>
-      <span class="desc">Cuánto de tus fijos le imputás al cliente</span>
+      <span class="desc">Cuánto de tus fijos repercute el tarifario sugerido</span>
     </div>
     <div class="absorcion-panel">
-      <h3>% de costos fijos a trasladar al cliente</h3>
-      <div class="sub">100% = el cliente paga toda tu estructura · Bajalo si querés ofrecer una tarifa más competitiva. El resto lo cubrís con otros clientes.</div>
+      <h3>% de costos fijos a trasladar al tarifario</h3>
+      <div class="sub">100% = el tarifario cubre toda tu estructura · Bajalo si querés ofrecer tarifas más competitivas. El resto lo absorbe la empresa con otros ingresos.</div>
       <div class="slider-wrap">
         <div>
           <input type="range" id="absorCot" min="0" max="100" value="100" step="1">
@@ -127,7 +123,7 @@
     <div class="section-head">
       <span class="section-num final">06</span>
       <h2 class="final">Tarifario sugerido</h2>
-      <span class="desc">Precio sugerido por rango y zona, calculado con TODA la información</span>
+      <span class="desc">Precio sugerido por kilo y zona — válido para cualquier cliente</span>
     </div>
     <div class="tabs">
       <button class="tab active" data-tab="precios" onclick="showTab('precios')">→ Precio sugerido</button>
@@ -144,104 +140,39 @@
       <div class="output-table"><table class="output" id="tablaGanancia"></table></div>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Las celdas resaltadas en cyan son rangos × zonas donde el cliente tiene guías cargadas.
+      La fila "KG excedente" muestra el precio sugerido por cada kilo adicional a partir de los 25 KG.
     </div>
   </div>
 
-  <!-- 07 — Resumen -->
+  <div class="step-arrow">▼</div>
+
+  <!-- 07 — Punto de equilibrio -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num final">07</span>
-      <h2 class="final">Resumen de la cotización</h2>
-      <span class="desc">Lo que le cobrás al cliente y tu resultado</span>
+      <span class="section-num cyan">07</span>
+      <h2>Punto de equilibrio</h2>
+      <span class="desc">Guías necesarias para cubrir los costos fijos · No perder plata</span>
     </div>
-    <div class="resumen-cliente">
-      <div class="label-cli">Resumen del cliente</div>
-      <div class="resumen-grid">
-        <div class="resumen-card">
-          <div class="label">Total guías</div>
-          <div class="value" id="resGuias">0</div>
-          <div class="sub">Cargadas en la matriz</div>
-        </div>
-        <div class="resumen-card">
-          <div class="label">Costo total para vos</div>
-          <div class="value" id="resCosto">$ 0</div>
-          <div class="sub">Fijos imputados + variables</div>
-        </div>
-        <div class="resumen-card highlight">
-          <div class="label">Precio total al cliente</div>
-          <div class="value" id="resPrecio">$ 0</div>
-          <div class="sub">Lo que le facturás</div>
-        </div>
-        <div class="resumen-card">
-          <div class="label">Ganancia (margen 30%)</div>
-          <div class="value" id="resGanancia">$ 0</div>
-          <div class="sub" id="resGananciaSub">Sobre los costos imputados al cliente</div>
-        </div>
-      </div>
+    <div class="output-table">
+      <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
-
-    <div class="pl-grid" style="margin-top:24px;">
-      <div class="pl-table">
-        <h3 style="margin:0 0 12px 0; font-family:'Fraunces',serif; color:var(--primary-deep); font-size:18px;">P&L con este cliente como único</h3>
-        <div class="pl-row">
-          <span class="label-pl">Ingresos del cliente</span>
-          <span class="val" id="plIng">$ 0</span>
-        </div>
-        <div class="pl-row danger subtotal" style="margin-top:8px;">
-          <span class="label-pl">Costos totales (con 100% fijos)</span>
-          <span class="val" id="plCostoTotal">$ 0</span>
-        </div>
-        <div class="pl-row">
-          <span class="label-pl" style="padding-left:18px;">— Costos fijos completos</span>
-          <span class="val" id="plFijos">$ 0</span>
-        </div>
-        <div class="pl-row">
-          <span class="label-pl" style="padding-left:18px;">— Costos variables del cliente</span>
-          <span class="val" id="plVar">$ 0</span>
-        </div>
-        <div class="pl-row total">
-          <span class="label-pl">Resultado mensual</span>
-          <span class="val" id="plResultado">$ 0</span>
-        </div>
-        <div style="font-size:11px; color:#888; font-style:italic; margin-top:10px;">
-          Si solo tuvieras este cliente y absorbieras vos los costos fijos no imputados, este sería tu resultado.
-        </div>
-      </div>
-
-      <div class="kpi-stack">
-        <div class="kpi primary">
-          <div class="kpi-label">Margen comercial sobre el cliente</div>
-          <div class="kpi-value" id="kpiMargen">—</div>
-          <div class="kpi-sub">Objetivo: <span id="kpiMargenObj">30%</span></div>
-        </div>
-        <div class="kpi cyan">
-          <div class="kpi-label">Precio promedio por guía</div>
-          <div class="kpi-value" id="kpiPrecioProm">—</div>
-          <div class="kpi-sub">Cliente</div>
-        </div>
-        <div class="kpi" id="kpiCubrimiento">
-          <div class="kpi-label">Fijos no imputados</div>
-          <div class="kpi-value" id="kpiNoCubierto">—</div>
-          <div class="kpi-sub">Tienen que cubrirlos otros clientes</div>
-        </div>
-      </div>
+    <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
+      Cada celda muestra cuántas guías de ese tipo (peso × zona) necesitás vender mensualmente para cubrir el 100% de tus costos fijos.
+      Si todo tu volumen fuera de ese tipo, ese sería tu punto de equilibrio.
     </div>
-
-    <div id="warnContainer"></div>
   </div>
 
   <!-- 08 — Historial -->
   <div class="section">
     <div class="section-head">
       <span class="section-num cyan">08</span>
-      <h2>Historial de cotizaciones</h2>
-      <span class="desc">Últimas 50 cotizaciones archivadas en este navegador</span>
+      <h2>Historial de tarifarios</h2>
+      <span class="desc">Últimas 50 versiones del tarifario archivadas</span>
     </div>
     <div id="historialContainer">
       <div class="empty-historial" id="emptyHistorial">
         <div class="empty-icon">📋</div>
-        <div>No hay cotizaciones archivadas todavía.</div>
+        <div>No hay tarifarios archivados todavía.</div>
         <div style="font-size:11px; color:#999; margin-top:6px;">Cuando exportes un PDF o uses "Guardar al historial", aparecerán acá.</div>
       </div>
       <div id="historialList"></div>
@@ -262,9 +193,9 @@
       <span class="text">SOUTHPOST</span>
     </div>
     <h2>Exportar tarifario</h2>
-    <p class="subtitle">¿A nombre de qué cliente sale el tarifario? Se va a imprimir en el encabezado del PDF.</p>
-    <div class="input-label">Nombre del cliente</div>
-    <input type="text" class="client-input" id="modalClientName" placeholder="Ej: ACME S.A." autocomplete="off">
+    <p class="subtitle">¿Con qué nombre querés guardar este tarifario? Se va a usar en el PDF y en el archivo del histórico.</p>
+    <div class="input-label">Nombre del tarifario / archivo</div>
+    <input type="text" class="client-input" id="modalClientName" placeholder="Ej: Tarifario Mayo 2026" autocomplete="off">
     <div class="modal-actions">
       <button class="modal-btn" onclick="cerrarModal()">Cancelar</button>
       <button class="modal-btn primary" onclick="confirmarExportPDF()">Generar PDF</button>
@@ -272,7 +203,7 @@
   </div>
 </div>
 
-<!-- MODAL guardar al historial (sin PDF) -->
+<!-- MODAL guardar al historial -->
 <div class="modal-backdrop" id="modalGuardar">
   <div class="modal">
     <div class="modal-logo">
@@ -280,9 +211,9 @@
       <span class="text">SOUTHPOST</span>
     </div>
     <h2>Guardar al historial</h2>
-    <p class="subtitle">Vamos a archivar esta cotización (sin generar PDF) y descargar el respaldo Excel.</p>
-    <div class="input-label">Nombre del cliente</div>
-    <input type="text" class="client-input" id="modalGuardarClientName" placeholder="Ej: ACME S.A." autocomplete="off">
+    <p class="subtitle">Vamos a archivar este tarifario (sin generar PDF) y descargar el respaldo Excel.</p>
+    <div class="input-label">Nombre del tarifario</div>
+    <input type="text" class="client-input" id="modalGuardarClientName" placeholder="Ej: Tarifario Mayo 2026" autocomplete="off">
     <div class="modal-actions">
       <button class="modal-btn" onclick="cerrarModalGuardar()">Cancelar</button>
       <button class="modal-btn primary" onclick="confirmarGuardarHistorial()">Guardar</button>
@@ -290,14 +221,14 @@
   </div>
 </div>
 
-<!-- MODAL detalle de cotización del historial -->
+<!-- MODAL detalle -->
 <div class="modal-backdrop" id="modalDetalle">
   <div class="modal modal-wide">
     <div class="modal-logo">
       <span class="dot"></span>
       <span class="text">SOUTHPOST</span>
     </div>
-    <h2 id="detalleTitulo">Detalle de cotización</h2>
+    <h2 id="detalleTitulo">Detalle de tarifario</h2>
     <p class="subtitle" id="detalleFecha">—</p>
     <div id="detalleContent" style="max-height: 60vh; overflow-y: auto; margin-top: 16px;"></div>
     <div class="modal-actions">
