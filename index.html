@@ -83,11 +83,38 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 04 — Costos variables por zona × ruta -->
+  <!-- 04 — Costos troncales -->
   <div class="section">
     <div class="section-head">
       <span class="section-num">04</span>
-      <h2>Costos variables por zona × ruta</h2>
+      <h2>Costos troncales</h2>
+      <span class="desc">Viaje desde HUB (Zona I) hacia cada zona destino · Pallet estándar</span>
+    </div>
+    <div class="troncal-container">
+      <div class="troncal-pallet-info">
+        <div class="pallet-label">Capacidad del pallet estándar</div>
+        <div class="pallet-inputs">
+          <span><input type="number" id="palletLargo" value="1" min="0.1" step="0.1"> m</span>
+          <span class="x">×</span>
+          <span><input type="number" id="palletAncho" value="1.2" min="0.1" step="0.1"> m</span>
+          <span class="x">×</span>
+          <span><input type="number" id="palletAlto" value="1.5" min="0.1" step="0.1"> m</span>
+          <span class="equals">=</span>
+          <span class="pallet-result" id="palletM3">1.8 m³</span>
+          <span class="pallet-result-kg" id="palletKgAforado">450 KG aforados</span>
+        </div>
+      </div>
+      <table class="tarif troncal-table" id="tablaTroncal"></table>
+    </div>
+  </div>
+
+  <div class="step-arrow">▼</div>
+
+  <!-- 05 — Costos variables por zona × ruta -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-num">05</span>
+      <h2>Costos variables por zona × ruta (Última milla)</h2>
       <span class="desc">Para cada Zona × Ruta km: vehículo + costo del viaje</span>
     </div>
     <div class="zonas-rutas" id="zonasRutas"></div>
@@ -95,10 +122,10 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 05 — Absorción -->
+  <!-- 06 — Absorción -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num cyan">05</span>
+      <span class="section-num cyan">06</span>
       <h2>Absorción de costos fijos</h2>
       <span class="desc">Cuánto de tus fijos repercute el tarifario sugerido</span>
     </div>
@@ -119,10 +146,10 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 06 — Tarifario sugerido -->
+  <!-- 07 — Tarifario sugerido -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num final">06</span>
+      <span class="section-num final">07</span>
       <h2 class="final">Tarifario sugerido</h2>
       <span class="desc">Precio por KG aforado · Por zona · Por ruta km</span>
     </div>
@@ -136,10 +163,10 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 07 — Punto de equilibrio -->
+  <!-- 08 — Punto de equilibrio -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num cyan">07</span>
+      <span class="section-num cyan">08</span>
       <h2>Punto de equilibrio</h2>
       <span class="desc">Guías necesarias para cubrir los costos fijos</span>
     </div>
@@ -151,10 +178,10 @@
     </div>
   </div>
 
-  <!-- 08 — Historial -->
+  <!-- 09 — Historial -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num cyan">08</span>
+      <span class="section-num cyan">09</span>
       <h2>Historial de tarifarios</h2>
       <span class="desc">Últimas 50 versiones del tarifario archivadas</span>
     </div>
