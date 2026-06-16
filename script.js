@@ -42,6 +42,8 @@ const DEFAULTS = {
   pallet: { largo: 1.0, ancho: 1.2, alto: 1.5 },
   // Costos troncales por zona destino (Z.I = 0, es el hub)
   troncalPorZona: [0, 80000, 120000, 200000],
+  // Mix de rutas (% del volumen total por cada ruta A-E)
+  mixRutas: { A: 50, B: 25, C: 15, D: 7, E: 3 },
   vehiculos: [
     { id: 'v_moto',   nombre: 'Moto',          m3: 0.3 },
     { id: 'v_util',   nombre: 'Utilitario',     m3: 1.0 },
@@ -103,6 +105,8 @@ function loadState() {
           for (let i = 0; i < 4; i++) {
             if (parsed.troncalPorZona[i] !== undefined) base.troncalPorZona[i] = parsed.troncalPorZona[i];
           }
+        } else if (k === 'mixRutas' && typeof parsed.mixRutas === 'object') {
+          base.mixRutas = { ...base.mixRutas, ...parsed.mixRutas };
         } else if (k === 'vehiculos' && Array.isArray(parsed.vehiculos)) {
           base.vehiculos = parsed.vehiculos;
         } else if (k === 'rutas' && Array.isArray(parsed.rutas)) {
@@ -326,6 +330,53 @@ function actualizarTroncalDerivadoZona(z) {
   if (elM3) elM3.innerHTML = `${fmt(costoM3)}<span class="sub">por m³</span>`;
 }
 
+/* ============= MIX DE RUTAS ============= */
+function renderMixRutas() {
+  const grid = document.getElementById('mixRutasGrid');
+  if (!grid) return;
+  let html = '';
+  RUTAS.forEach(r => {
+    const v = state.mixRutas[r.id] || 0;
+    html += `<div class="mix-ruta-item">
+      <label>${r.label}</label>
+      <span class="km">${r.km}</span>
+      <div class="input-wrap">
+        <input type="number" data-mix="${r.id}" value="${v}" min="0" max="100" step="1">
+        <span class="pct-symbol">%</span>
+      </div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+  actualizarMixTotal();
+
+  grid.querySelectorAll('input[type=number]').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const id = e.target.dataset.mix;
+      state.mixRutas[id] = +e.target.value || 0;
+      saveState();
+      actualizarMixTotal();
+      recalc();
+    });
+  });
+}
+
+function totalMixRutas() {
+  return RUTAS.reduce((acc, r) => acc + (+state.mixRutas[r.id] || 0), 0);
+}
+
+function actualizarMixTotal() {
+  const el = document.getElementById('mixRutasTotal');
+  if (!el) return;
+  const tot = totalMixRutas();
+  if (tot === 100) {
+    el.textContent = `Total: ${tot}%  ✓`;
+    el.classList.remove('error');
+  } else {
+    el.textContent = `Total: ${tot}%  ⚠️ debería ser 100%`;
+    el.classList.add('error');
+  }
+}
+
 function renderZonasRutas() {
   const cont = document.getElementById('zonasRutas');
   cont.innerHTML = '';
@@ -535,79 +586,69 @@ function recalc() {
 }
 
 function renderZonaTabs() {
+  // Función obsoleta — el tarifario ya no tiene tabs por zona
   const cont = document.getElementById('zonaTabs');
-  let html = '';
-  for (let z = 0; z < 4; z++) {
-    html += `<button class="zona-tab ${z === zonaActivaTab ? 'active' : ''}" onclick="cambiarZonaTab(${z})">${ZONAS[z]}</button>`;
-  }
-  cont.innerHTML = html;
+  if (cont) cont.innerHTML = '';
 }
 
 function cambiarZonaTab(z) {
   zonaActivaTab = z;
-  renderZonaTabs();
-  renderTarifariosPorZona(window._datos || []);
 }
 
 function renderTarifariosPorZona(datos) {
-  const cont = document.getElementById('tarifariosPorZona');
-  let html = '';
+  // Función nueva: una sola tabla 4 zonas × 19 filas, ponderada por mix
+  const tbl = document.getElementById('tablaTarifario');
+  if (!tbl) return;
+
+  // Calcular precios ponderados por zona
+  const mix = state.mixRutas;
+  const totMix = totalMixRutas();
+  // Si la suma no es 100, igualmente promediamos con los % cargados (pueden ser >0)
+  const sumW = totMix > 0 ? totMix : 1;
+
+  // Para cada zona, calcular precios ponderados por peso + excedente
+  const preciosZonaPorPeso = []; // [zona][peso]
+  const preciosZonaExcedente = []; // [zona]
   for (let z = 0; z < 4; z++) {
-    html += `<div class="tarifario-final ${z === zonaActivaTab ? 'active' : ''}">`;
-    html += `<table class="output"><thead><tr><th style="text-align:left;">Peso aforado</th>`;
-    for (let r = 0; r < 5; r++) {
-      html += `<th class="ruta-header">${RUTAS[r].label}<br><span style="font-size:9px; opacity:0.7; font-weight:400;">${RUTAS[r].km}</span></th>`;
-    }
-    html += `</tr></thead><tbody>`;
-
-    // Fila info: vehículo y $/KG
-    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">Vehículo</td>`;
-    for (let r = 0; r < 5; r++) {
-      const d = datos[z][r];
-      html += `<td style="text-align:right; font-size:11px; color:#666;">${escaparHTML(d.vehNombre)} (${d.vehM3} m³)</td>`;
-    }
-    html += `</tr>`;
-    // Fila troncal $/KG
-    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">$ / KG troncal</td>`;
-    for (let r = 0; r < 5; r++) {
-      const d = datos[z][r];
-      html += `<td style="text-align:right; font-size:11px; color:#666;">${fmt(d.troncalKgVar)}</td>`;
-    }
-    html += `</tr>`;
-    // Fila UM $/KG
-    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">$ / KG última milla</td>`;
-    for (let r = 0; r < 5; r++) {
-      const d = datos[z][r];
-      html += `<td style="text-align:right; font-size:11px; color:#666;">${fmt(d.umKgVar)}</td>`;
-    }
-    html += `</tr>`;
-    // Fila precio total $/KG aforado (con margen)
-    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;"><strong>$ / KG aforado (venta)</strong></td>`;
-    for (let r = 0; r < 5; r++) {
-      const d = datos[z][r];
-      html += `<td style="text-align:right; font-size:11px; color:var(--cyan-deep); font-weight:700;">${fmt(d.precioKgVar)}</td>`;
-    }
-    html += `</tr>`;
-
-    // Filas de pesos
-    PESOS_TARIFA.forEach((peso, pi) => {
-      html += `<tr><td class="range-label">${peso} KG</td>`;
+    const filaPesos = PESOS_TARIFA.map((_, pi) => {
+      let acc = 0;
       for (let r = 0; r < 5; r++) {
-        const v = datos[z][r].precios[pi];
-        html += `<td class="price">${fmt(v)}</td>`;
+        const w = (+mix[RUTAS[r].id] || 0) / sumW;
+        acc += datos[z][r].precios[pi] * w;
       }
-      html += `</tr>`;
+      return acc;
     });
-    // Excedente
-    html += `<tr class="excedente-row"><td class="range-label">KG excedente</td>`;
+    preciosZonaPorPeso.push(filaPesos);
+    let accEx = 0;
     for (let r = 0; r < 5; r++) {
-      const v = datos[z][r].precioExcedente;
-      html += `<td class="price">${fmt(v)} <span style="font-size:9px; color:#999;">/ kg</span></td>`;
+      const w = (+mix[RUTAS[r].id] || 0) / sumW;
+      accEx += datos[z][r].precioExcedente * w;
+    }
+    preciosZonaExcedente.push(accEx);
+  }
+  window._preciosZonaPorPeso = preciosZonaPorPeso;
+  window._preciosZonaExcedente = preciosZonaExcedente;
+
+  let html = `<thead><tr><th style="text-align:left;">Peso aforado</th>`;
+  for (let z = 0; z < 4; z++) {
+    html += `<th class="ruta-header">${ZONAS[z]}</th>`;
+  }
+  html += `</tr></thead><tbody>`;
+  // Filas pesos
+  PESOS_TARIFA.forEach((peso, pi) => {
+    html += `<tr><td class="range-label">${peso} KG</td>`;
+    for (let z = 0; z < 4; z++) {
+      html += `<td class="price">${fmt(preciosZonaPorPeso[z][pi])}</td>`;
     }
     html += `</tr>`;
-    html += `</tbody></table></div>`;
+  });
+  // Excedente
+  html += `<tr class="excedente-row"><td class="range-label">KG excedente</td>`;
+  for (let z = 0; z < 4; z++) {
+    html += `<td class="price">${fmt(preciosZonaExcedente[z])} <span style="font-size:9px; color:#999;">/ kg</span></td>`;
   }
-  cont.innerHTML = html;
+  html += `</tr></tbody>`;
+  tbl.innerHTML = html;
 }
 
 function renderEquilibrio(datos) {
@@ -615,33 +656,34 @@ function renderEquilibrio(datos) {
   const totFijo = totalFijoGeneral();
   if (totFijo <= 0) { tbl.innerHTML = ''; return; }
 
-  // Punto de equilibrio: cuántas guías de 25 KG aforados se necesitan
-  // por cada (Zona, Ruta) para cubrir los fijos.
-  // ganancia_por_guia = precio_25 - costo_variable_25
-  // costo_variable_25 = 25 × costoKgVar
-  // guias = ceil(fijos / ganancia)
+  // Para el equilibrio: precio ponderado a 25 KG - costo variable ponderado a 25 KG
   const PESO_REF = 25;
+  const peIdx = PESOS_TARIFA.indexOf(PESO_REF);
+  const mix = state.mixRutas;
+  const totMix = totalMixRutas();
+  const sumW = totMix > 0 ? totMix : 1;
+
   let html = `<thead><tr><th style="text-align:left;">Zona</th>`;
-  for (let r = 0; r < 5; r++) {
-    html += `<th class="ruta-header">${RUTAS[r].label}</th>`;
-  }
+  html += `<th class="ruta-header">Guías necesarias (25 KG aforados)</th>`;
   html += `</tr></thead><tbody>`;
   for (let z = 0; z < 4; z++) {
-    html += `<tr><td class="range-label">${ZONAS[z]}</td>`;
+    // Precio ponderado a 25 KG
+    let precio25 = 0;
+    let costoVar25 = 0;
     for (let r = 0; r < 5; r++) {
-      const d = datos[z][r];
-      const variable = PESO_REF * d.costoKgVar;
-      // El precio a 25 KG ya incluye fijos+margen, pero para equilibrio queremos contribución = precio - variable
-      const precio25 = d.precios[PESOS_TARIFA.indexOf(PESO_REF)];
-      const contrib = precio25 - variable;
-      if (contrib > 0) {
-        const guias = Math.ceil(totFijo / contrib);
-        html += `<td class="price">${guias.toLocaleString('es-AR')}</td>`;
-      } else {
-        html += `<td class="infinity">—</td>`;
-      }
+      const w = (+mix[RUTAS[r].id] || 0) / sumW;
+      precio25 += datos[z][r].precios[peIdx] * w;
+      costoVar25 += (PESO_REF * datos[z][r].costoKgVar) * w;
     }
-    html += `</tr>`;
+    const contrib = precio25 - costoVar25;
+    let cell;
+    if (contrib > 0) {
+      const g = Math.ceil(totFijo / contrib);
+      cell = `<td class="price">${g.toLocaleString('es-AR')}</td>`;
+    } else {
+      cell = `<td class="infinity">— sin contribución</td>`;
+    }
+    html += `<tr><td class="range-label">${ZONAS[z]}</td>${cell}</tr>`;
   }
   html += `</tbody>`;
   tbl.innerHTML = html;
@@ -721,173 +763,117 @@ function fmtFechaHumana(iso) {
 function generarPDF(titulo) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const datos = window._datos || [];
   const pageW = 210;
   const pageH = 297;
   const margin = 15;
 
-  let pageNum = 0;
-  const totalPages = 4; // una hoja por zona
+  // Logo + fecha
+  const logoX = margin + 4;
+  const logoY = margin + 6;
+  doc.setFillColor(43, 128, 200);
+  doc.circle(logoX, logoY, 2.5, 'F');
+  doc.setFillColor(43, 212, 217);
+  doc.circle(logoX + 0.6, logoY + 0.6, 1.4, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(13, 44, 102);
+  doc.text('SOUTHPOST', logoX + 5, logoY + 1.5);
 
-  for (let z = 0; z < 4; z++) {
-    if (pageNum > 0) doc.addPage();
-    pageNum++;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text('FECHA DE EMISIÓN', pageW - margin, margin + 4, { align: 'right' });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(13, 44, 102);
+  doc.text(fechaArgentina(), pageW - margin, margin + 9, { align: 'right' });
 
-    // Logo + fecha
-    const logoX = margin + 4;
-    const logoY = margin + 6;
-    doc.setFillColor(43, 128, 200);
-    doc.circle(logoX, logoY, 2.5, 'F');
-    doc.setFillColor(43, 212, 217);
-    doc.circle(logoX + 0.6, logoY + 0.6, 1.4, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(13, 44, 102);
-    doc.text('SOUTHPOST', logoX + 5, logoY + 1.5);
+  doc.setDrawColor(10, 22, 40);
+  doc.setLineWidth(0.6);
+  doc.line(margin, margin + 14, pageW - margin, margin + 14);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text('FECHA DE EMISIÓN', pageW - margin, margin + 4, { align: 'right' });
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(13, 44, 102);
-    doc.text(fechaArgentina(), pageW - margin, margin + 9, { align: 'right' });
+  // Título
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(30, 75, 168);
+  doc.text('TARIFARIO VIGENTE', pageW / 2, margin + 22, { align: 'center' });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(13, 44, 102);
+  doc.text(titulo, pageW / 2, margin + 31, { align: 'center' });
 
-    doc.setDrawColor(10, 22, 40);
-    doc.setLineWidth(0.6);
-    doc.line(margin, margin + 14, pageW - margin, margin + 14);
-
-    // Título
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(30, 75, 168);
-    doc.text(`TARIFARIO VIGENTE · ${ZONAS[z]}`, pageW / 2, margin + 22, { align: 'center' });
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(13, 44, 102);
-    doc.text(titulo, pageW / 2, margin + 30, { align: 'center' });
-
-    // Tabla por zona
-    const headers = [['Peso aforado', 'Ruta A\n0-50 km', 'Ruta B\n51-100 km', 'Ruta C\n101-150 km', 'Ruta D\n151-200 km', 'Ruta E\n+201 km']];
-    const body = [];
-
-    // Fila info: vehículo
-    body.push([
-      'Vehículo',
-      `${datos[z][0].vehNombre} (${datos[z][0].vehM3} m³)`,
-      `${datos[z][1].vehNombre} (${datos[z][1].vehM3} m³)`,
-      `${datos[z][2].vehNombre} (${datos[z][2].vehM3} m³)`,
-      `${datos[z][3].vehNombre} (${datos[z][3].vehM3} m³)`,
-      `${datos[z][4].vehNombre} (${datos[z][4].vehM3} m³)`,
+  // Tabla principal
+  const preciosZ = window._preciosZonaPorPeso || [[], [], [], []];
+  const preciosEx = window._preciosZonaExcedente || [0, 0, 0, 0];
+  const headers = [['Peso aforado', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
+  const body = [];
+  PESOS_TARIFA.forEach((peso, pi) => {
+    body.push([`${peso} KG`,
+      fmt(preciosZ[0][pi]),
+      fmt(preciosZ[1][pi]),
+      fmt(preciosZ[2][pi]),
+      fmt(preciosZ[3][pi]),
     ]);
-    // Fila info: $/KG troncal
-    body.push([
-      '$ / KG troncal',
-      fmt(datos[z][0].troncalKgVar),
-      fmt(datos[z][1].troncalKgVar),
-      fmt(datos[z][2].troncalKgVar),
-      fmt(datos[z][3].troncalKgVar),
-      fmt(datos[z][4].troncalKgVar),
-    ]);
-    // Fila info: $/KG UM
-    body.push([
-      '$ / KG última milla',
-      fmt(datos[z][0].umKgVar),
-      fmt(datos[z][1].umKgVar),
-      fmt(datos[z][2].umKgVar),
-      fmt(datos[z][3].umKgVar),
-      fmt(datos[z][4].umKgVar),
-    ]);
-    // Fila info: $/KG aforado total (venta)
-    body.push([
-      '$ / KG aforado (venta)',
-      fmt(datos[z][0].precioKgVar),
-      fmt(datos[z][1].precioKgVar),
-      fmt(datos[z][2].precioKgVar),
-      fmt(datos[z][3].precioKgVar),
-      fmt(datos[z][4].precioKgVar),
-    ]);
-    // Filas de pesos
-    PESOS_TARIFA.forEach((peso, pi) => {
-      body.push([`${peso} KG`, fmt(datos[z][0].precios[pi]), fmt(datos[z][1].precios[pi]), fmt(datos[z][2].precios[pi]), fmt(datos[z][3].precios[pi]), fmt(datos[z][4].precios[pi])]);
-    });
-    // Excedente
-    body.push([
-      'KG excedente',
-      fmt(datos[z][0].precioExcedente) + ' /kg',
-      fmt(datos[z][1].precioExcedente) + ' /kg',
-      fmt(datos[z][2].precioExcedente) + ' /kg',
-      fmt(datos[z][3].precioExcedente) + ' /kg',
-      fmt(datos[z][4].precioExcedente) + ' /kg',
-    ]);
+  });
+  body.push(['KG excedente',
+    fmt(preciosEx[0]) + ' /kg',
+    fmt(preciosEx[1]) + ' /kg',
+    fmt(preciosEx[2]) + ' /kg',
+    fmt(preciosEx[3]) + ' /kg',
+  ]);
 
-    doc.autoTable({
-      head: headers, body: body, startY: margin + 36, theme: 'grid', margin: { left: margin, right: margin },
-      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 1.8, lineColor: [197, 210, 227], lineWidth: 0.1, textColor: [13, 44, 102] },
-      headStyles: { fillColor: [10, 22, 40], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold', halign: 'center', cellPadding: 2.5 },
-      columnStyles: {
-        0: { halign: 'left', cellWidth: 30, fillColor: [244, 247, 251], fontStyle: 'italic', textColor: [10, 22, 40], fontSize: 8 },
-        1: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-        2: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-        3: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-        4: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-        5: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-      },
-      alternateRowStyles: { fillColor: [246, 249, 253] },
-      didParseCell: function (data) {
-        if (data.section === 'head' && data.column.index >= 1) {
-          data.cell.styles.fillColor = [13, 44, 102];
-        }
-        // Filas info (4 primeras): gris claro
-        if (data.section === 'body' && data.row.index < 4) {
-          data.cell.styles.fillColor = [230, 237, 246];
-          data.cell.styles.fontStyle = 'normal';
-          data.cell.styles.fontSize = 7;
-          if (data.column.index === 0) data.cell.styles.textColor = [102, 102, 102];
-          // La cuarta fila (info de $/KG aforado venta) en cyan
-          if (data.row.index === 3) {
-            data.cell.styles.textColor = [10, 165, 170];
-            data.cell.styles.fontStyle = 'bold';
-          }
-        }
-        // Última fila (excedente)
-        if (data.section === 'body' && data.row.index === body.length - 1) {
-          data.cell.styles.fillColor = [228, 247, 248];
-          data.cell.styles.fontStyle = 'bold';
-          if (data.column.index === 0) data.cell.styles.textColor = [10, 165, 170];
-        }
-      },
-    });
+  doc.autoTable({
+    head: headers, body: body, startY: margin + 38, theme: 'grid', margin: { left: margin, right: margin },
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, lineColor: [197, 210, 227], lineWidth: 0.1, textColor: [13, 44, 102] },
+    headStyles: { fillColor: [10, 22, 40], textColor: [255, 255, 255], fontSize: 9, fontStyle: 'bold', halign: 'right', cellPadding: 2.5 },
+    columnStyles: {
+      0: { halign: 'left', cellWidth: 38, fillColor: [244, 247, 251], fontStyle: 'italic', textColor: [10, 22, 40], fontSize: 10 },
+      1: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
+      2: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
+      3: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
+      4: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
+    },
+    alternateRowStyles: { fillColor: [246, 249, 253] },
+    didParseCell: function (data) {
+      if (data.section === 'head' && data.column.index >= 1) {
+        data.cell.styles.fillColor = [13, 44, 102];
+      }
+      // Última fila (excedente)
+      if (data.section === 'body' && data.row.index === body.length - 1) {
+        data.cell.styles.fillColor = [228, 247, 248];
+        data.cell.styles.fontStyle = 'bold';
+        if (data.column.index === 0) data.cell.styles.textColor = [10, 165, 170];
+      }
+    },
+  });
 
-    const finalY = doc.lastAutoTable.finalY;
+  const finalY = doc.lastAutoTable.finalY;
 
-    // Aviso
-    const warnY = finalY + 6;
-    doc.setFillColor(244, 247, 251);
-    doc.rect(margin, warnY, pageW - 2 * margin, 9, 'F');
-    doc.setFillColor(43, 212, 217);
-    doc.rect(margin, warnY, 1.2, 9, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(10, 165, 170);
-    doc.text('AVISO', margin + 4, warnY + 3.5);
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8);
-    doc.setTextColor(13, 44, 102);
-    doc.text('Tarifario de uso interno · KG aforado: max(peso real, m³ × 250) · No para envío comercial', margin + 4, warnY + 7);
+  // Aviso
+  const warnY = finalY + 8;
+  doc.setFillColor(244, 247, 251);
+  doc.rect(margin, warnY, pageW - 2 * margin, 11, 'F');
+  doc.setFillColor(43, 212, 217);
+  doc.rect(margin, warnY, 1.2, 11, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(10, 165, 170);
+  doc.text('AVISO', margin + 4, warnY + 4);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.setTextColor(13, 44, 102);
+  doc.text('Tarifario de uso interno · KG aforado: max(peso real, m³ × 250) · No para envío comercial', margin + 4, warnY + 8.5);
 
-    // Footer
-    const footerY = pageH - margin + 2;
-    doc.setDrawColor(197, 210, 227);
-    doc.setLineWidth(0.2);
-    doc.line(margin, footerY - 4, pageW - margin, footerY - 4);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(140, 140, 140);
-    doc.text('SOUTHPOST · Calculadora de tarifario v8', margin, footerY);
-    doc.text(`Página ${pageNum} de ${totalPages}`, pageW - margin, footerY, { align: 'right' });
-  }
+  // Footer
+  const footerY = pageH - margin + 2;
+  doc.setDrawColor(197, 210, 227);
+  doc.setLineWidth(0.2);
+  doc.line(margin, footerY - 4, pageW - margin, footerY - 4);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 140);
+  doc.text('SOUTHPOST · Calculadora de tarifario v10', margin, footerY);
+  doc.text('Página 1 de 1', pageW - margin, footerY, { align: 'right' });
 
   const fechaArchivo = new Date().toISOString().slice(0, 10);
   const safeName = titulo.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
@@ -942,6 +928,7 @@ function recargarTarifario(id) {
   renderVehiculos();
   renderTroncal();
   renderZonasRutas();
+  renderMixRutas();
   recalc();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast('Tarifario re-cargado en la calculadora');
@@ -1124,20 +1111,55 @@ function exportarExcelDesdeSnapshot(cot) {
   ws4['!cols'] = [{wch: 10}, {wch: 10}, {wch: 14}, {wch: 22}, {wch: 8}, {wch: 14}, {wch: 14}, {wch: 16}, {wch: 14}];
   XLSX.utils.book_append_sheet(wb, ws4, 'Última milla');
 
-  // Hoja 5: Tarifario por zona (las 4 zonas en una sola hoja)
-  const tdata = [['Zona', 'Peso', 'Ruta A', 'Ruta B', 'Ruta C', 'Ruta D', 'Ruta E']];
+  // Hoja 6: Mix de rutas
+  const mix = e.mixRutas || { A:50, B:25, C:15, D:7, E:3 };
+  const totMixSnap = (mix.A||0)+(mix.B||0)+(mix.C||0)+(mix.D||0)+(mix.E||0);
+  const mixData = [
+    ['Mix de rutas (% del volumen total)'],
+    [],
+    ['Ruta', 'Rango km', '%'],
+    ['Ruta A', '0 - 50 km', mix.A || 0],
+    ['Ruta B', '51 - 100 km', mix.B || 0],
+    ['Ruta C', '101 - 150 km', mix.C || 0],
+    ['Ruta D', '151 - 200 km', mix.D || 0],
+    ['Ruta E', '+201 km', mix.E || 0],
+    ['TOTAL', '', totMixSnap],
+  ];
+  const ws5mix = XLSX.utils.aoa_to_sheet(mixData);
+  ws5mix['!cols'] = [{wch: 14}, {wch: 16}, {wch: 10}];
+  XLSX.utils.book_append_sheet(wb, ws5mix, 'Mix de rutas');
+
+  // Hoja 7: Tarifario sugerido (precio único por zona, ponderado)
+  // Recalcular ponderados para el snapshot
+  const sumW = totMixSnap > 0 ? totMixSnap : 1;
+  const tdata = [['Peso aforado', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
+  PESOS_TARIFA.forEach((peso, pi) => {
+    const row = [`${peso} KG`];
+    for (let z = 0; z < 4; z++) {
+      let acc = 0;
+      for (let r = 0; r < 5; r++) {
+        const w = (+mix[RUTAS[r].id] || 0) / sumW;
+        const dz = datos[z] || [];
+        acc += (dz[r] ? dz[r].precios[pi] : 0) * w;
+      }
+      row.push(+(acc.toFixed(2)));
+    }
+    tdata.push(row);
+  });
+  // Excedente
+  const rowEx = ['KG excedente ($/kg)'];
   for (let z = 0; z < 4; z++) {
-    PESOS_TARIFA.forEach((peso, pi) => {
-      const fila = [ZONAS[z], `${peso} KG`];
-      for (let r = 0; r < 5; r++) fila.push(+(datos[z][r].precios[pi].toFixed(2)));
-      tdata.push(fila);
-    });
-    const filaEx = [ZONAS[z], 'KG excedente ($/kg)'];
-    for (let r = 0; r < 5; r++) filaEx.push(+(datos[z][r].precioExcedente.toFixed(2)));
-    tdata.push(filaEx);
+    let acc = 0;
+    for (let r = 0; r < 5; r++) {
+      const w = (+mix[RUTAS[r].id] || 0) / sumW;
+      const dz = datos[z] || [];
+      acc += (dz[r] ? dz[r].precioExcedente : 0) * w;
+    }
+    rowEx.push(+(acc.toFixed(2)));
   }
+  tdata.push(rowEx);
   const ws5 = XLSX.utils.aoa_to_sheet(tdata);
-  ws5['!cols'] = [{wch: 10}, {wch: 22}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}];
+  ws5['!cols'] = [{wch: 22}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}];
   XLSX.utils.book_append_sheet(wb, ws5, 'Tarifario sugerido');
 
   const fechaArchivo = new Date(cot.fecha).toISOString().slice(0, 10);
@@ -1167,6 +1189,7 @@ function resetAll() {
   renderVehiculos();
   renderTroncal();
   renderZonasRutas();
+  renderMixRutas();
   recalc();
   toast('Datos reseteados');
 }
@@ -1177,6 +1200,7 @@ renderFijosGenerales();
 renderVehiculos();
 renderTroncal();
 renderZonasRutas();
+renderMixRutas();
 renderZonaTabs();
 renderHistorial();
 recalc();

@@ -16,7 +16,7 @@
 <div class="wrap">
 
   <header class="masthead">
-    <span class="badge">Calculadora · v8.0</span>
+    <span class="badge">Calculadora · v10.0</span>
     <div>
       <div class="logo-mark"><span class="logo-dot"></span> SOUTHPOST</div>
       <h1>Tarifario <em>por aforo</em></h1>
@@ -122,10 +122,28 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 06 — Absorción -->
+  <div class="step-arrow">▼</div>
+
+  <!-- 06 — Mix de rutas -->
   <div class="section">
     <div class="section-head">
       <span class="section-num cyan">06</span>
+      <h2>Mix de rutas</h2>
+      <span class="desc">% del volumen que cae en cada rango de km · Mismo mix para las 4 zonas</span>
+    </div>
+    <div class="mix-rutas-panel">
+      <div class="mix-rutas-grid" id="mixRutasGrid"></div>
+      <div class="mix-rutas-total" id="mixRutasTotal">Total: 100%</div>
+      <div class="mix-rutas-helper">Cada % representa qué porcentaje de tus guías cae en esa ruta. Si la suma no es 100%, los precios se calculan igualmente pero el total ponderado no es exacto.</div>
+    </div>
+  </div>
+
+  <div class="step-arrow">▼</div>
+
+  <!-- 07 — Absorción -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-num cyan">07</span>
       <h2>Absorción de costos fijos</h2>
       <span class="desc">Cuánto de tus fijos repercute el tarifario sugerido</span>
     </div>
@@ -146,42 +164,44 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 07 — Tarifario sugerido -->
+  <!-- 08 — Tarifario sugerido -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num final">07</span>
+      <span class="section-num final">08</span>
       <h2 class="final">Tarifario sugerido</h2>
-      <span class="desc">Precio por KG aforado · Por zona · Por ruta km</span>
+      <span class="desc">Precio único por zona (promedio ponderado por mix de rutas)</span>
     </div>
-    <div class="zona-tabs" id="zonaTabs"></div>
-    <div id="tarifariosPorZona"></div>
+    <div class="tarifario-final active" id="tarifarioFinal">
+      <table class="output" id="tablaTarifario"></table>
+    </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
       Los KG son <strong>aforados</strong>: peso_aforado = max(peso_real, m³ × 250). 
       La fila "KG excedente" es el precio por cada KG aforado adicional a partir de los 50 KG.
+      Estos precios YA incluyen: costos fijos + troncal + última milla + margen.
     </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 08 — Punto de equilibrio -->
+  <!-- 09 — Punto de equilibrio -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num cyan">08</span>
+      <span class="section-num cyan">09</span>
       <h2>Punto de equilibrio</h2>
-      <span class="desc">Guías necesarias para cubrir los costos fijos</span>
+      <span class="desc">Guías de 25 KG aforados necesarias para cubrir costos fijos por zona</span>
     </div>
     <div class="output-table">
       <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Cada celda muestra cuántas guías de 25 KG aforados (típico ecommerce) necesitás vender por cada (Zona × Ruta) para cubrir el 100% de tus costos fijos.
+      Cada celda muestra cuántas guías de 25 KG aforados necesitás vender por zona para cubrir el 100% de tus costos fijos, usando el promedio ponderado de rutas.
     </div>
   </div>
 
-  <!-- 09 — Historial -->
+  <!-- 10 — Historial -->
   <div class="section">
     <div class="section-head">
-      <span class="section-num cyan">09</span>
+      <span class="section-num cyan">10</span>
       <h2>Historial de tarifarios</h2>
       <span class="desc">Últimas 50 versiones del tarifario archivadas</span>
     </div>
