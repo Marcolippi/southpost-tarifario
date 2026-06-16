@@ -237,3 +237,73 @@ table.output tr.info-row td { background: var(--paper-2); font-size: 10px; color
 .mix-rutas-total { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; padding: 10px 14px; background: var(--paper-2); border-left: 4px solid var(--success); color: var(--primary-deep); border-radius: 2px; }
 .mix-rutas-total.error { border-left-color: var(--danger); color: var(--danger); background: rgba(229,75,75,0.08); }
 .mix-rutas-helper { margin-top: 10px; font-size: 11px; color: #666; font-style: italic; }
+
+/* ============= V11 — SUCURSALES ============= */
+.sucursales-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.suc-contador { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--primary-deep); }
+.suc-contador strong { font-size: 16px; }
+.add-suc-btn { background: var(--primary); color: var(--paper); border: none; padding: 10px 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; border-radius: 3px; }
+.add-suc-btn:hover { background: var(--primary-deep); }
+
+.suc-empty { background: white; border: 2px dashed var(--rule); padding: 40px 20px; text-align: center; border-radius: 4px; color: #666; font-size: 14px; }
+.suc-empty-icon { font-size: 40px; opacity: 0.4; margin-bottom: 10px; }
+
+.suc-card { background: white; border: 1px solid var(--rule); border-radius: 6px; padding: 22px 26px; margin-bottom: 20px; position: relative; }
+.suc-card::before { content: 'SUCURSAL'; position: absolute; top: -10px; left: 20px; background: var(--primary); color: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; padding: 3px 9px; letter-spacing: 0.15em; border-radius: 1px; }
+.suc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px; }
+.suc-nombre { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; color: var(--primary-deep); border: none; border-bottom: 1px solid transparent; padding: 4px 2px; flex: 1; background: transparent; }
+.suc-nombre:hover { border-bottom-color: var(--rule); }
+.suc-nombre:focus { outline: none; border-bottom-color: var(--primary); }
+.suc-del { background: transparent; border: 1px solid rgba(229,75,75,0.3); color: var(--danger); padding: 6px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.08em; }
+.suc-del:hover { background: var(--danger); color: white; }
+
+.suc-section-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan-deep); font-weight: 700; margin: 18px 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid var(--paper-2); }
+
+.suc-fijos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.suc-fijo-item { display: flex; flex-direction: column; gap: 3px; }
+.suc-fijo-lbl { font-size: 10px; color: #777; }
+.suc-fijo-item input { padding: 6px 8px; border: 1px solid var(--rule); background: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: var(--ink); }
+.suc-fijo-item input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.suc-fijo-total { text-align: right; font-size: 12px; color: #666; margin-top: 8px; font-family: 'JetBrains Mono', monospace; }
+.suc-fijo-total strong { color: var(--primary-deep); font-size: 14px; }
+
+.suc-zonas { display: flex; gap: 18px; flex-wrap: wrap; }
+.suc-zona-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; font-family: 'Manrope', sans-serif; color: var(--ink); }
+.suc-zona-chk input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+
+.suc-troncal { display: flex; align-items: center; gap: 12px; }
+.suc-troncal input { width: 160px; padding: 8px 10px; border: 1px solid var(--rule); background: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; color: var(--ink); }
+.suc-troncal input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.suc-troncal-derived { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan-deep); font-weight: 700; }
+
+.suc-rutas-wrap { overflow-x: auto; }
+.suc-rutas-table { width: 100%; border-collapse: collapse; min-width: 540px; }
+.suc-rutas-table th, .suc-rutas-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--rule); }
+.suc-rutas-table th { background: var(--paper-2); font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--primary-deep); font-weight: 700; }
+.suc-ruta-km { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #999; }
+.suc-rutas-table select { width: 100%; padding: 5px 7px; border: 1px solid var(--rule); background: var(--paper); font-family: 'Manrope', sans-serif; font-size: 12px; color: var(--ink); }
+.suc-rutas-table input { width: 100%; padding: 5px 7px; border: 1px solid var(--rule); background: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: var(--ink); }
+.suc-rutas-table select:focus, .suc-rutas-table input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.suc-rutas-table td.derived { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan-deep); font-weight: 700; text-align: right; background: rgba(43,212,217,0.04); }
+.suc-rutas-table td.derived .sub { font-size: 9px; color: #888; font-weight: 400; }
+
+/* ============= V11 — TARIFARIO EDITABLE ============= */
+.tarifario-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+.tarifario-leyenda { font-size: 11px; color: #666; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.leyenda-item { display: flex; align-items: center; gap: 5px; }
+.leyenda-sep { color: var(--rule); }
+.restaurar-btn { background: transparent; border: 1px solid var(--rule); color: var(--primary-deep); padding: 7px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; border-radius: 2px; }
+.restaurar-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
+
+.manual-dot { color: var(--warn); font-size: 11px; cursor: pointer; margin-left: 4px; vertical-align: middle; }
+.manual-dot:hover { color: var(--danger); }
+
+table.output td.price .tarifa-input { width: 90px; padding: 5px 7px; border: 1px solid transparent; background: transparent; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; text-align: right; color: var(--primary-deep); border-radius: 2px; }
+table.output td.price .tarifa-input:hover { border-color: var(--rule); background: white; }
+table.output td.price .tarifa-input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+table.output td.celda-manual { background: rgba(245,158,11,0.08) !important; }
+table.output td.celda-manual .tarifa-input { color: var(--warn); font-weight: 700; }
+table.output td.sin-cobertura { color: #ccc; text-align: center; }
+
+.eq-pos { color: var(--success) !important; font-weight: 700; }
+.eq-neg { color: var(--danger) !important; font-weight: 700; }

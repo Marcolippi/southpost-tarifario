@@ -16,12 +16,12 @@
 <div class="wrap">
 
   <header class="masthead">
-    <span class="badge">Calculadora · v10.0</span>
+    <span class="badge">Calculadora · v11.0</span>
     <div>
       <div class="logo-mark"><span class="logo-dot"></span> SOUTHPOST</div>
-      <h1>Tarifario <em>por aforo</em></h1>
+      <h1>Tarifario <em>por sucursales</em></h1>
       <div style="font-family: 'JetBrains Mono',monospace; font-size:11px; color:var(--primary-deep); margin-top:6px; letter-spacing:0.05em;">
-        COSTOS POR VIAJE · CAPACIDAD M³ · TARIFA POR KG AFORADO (1 m³ = 250 KG)
+        COSTOS POR SUCURSAL · AFORO + JORNADA · TARIFA POR ZONA · EQUILIBRIO POR SUCURSAL
       </div>
     </div>
     <div class="meta">
@@ -35,46 +35,26 @@
 
   <!-- 01 — Parámetros generales -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num">01</span>
-      <h2>Parámetros generales</h2>
-      <span class="desc">Volumen mensual operación y margen objetivo</span>
-    </div>
+    <div class="section-head"><span class="section-num">01</span><h2>Parámetros generales</h2><span class="desc">Volumen mensual y margen objetivo</span></div>
     <div class="globals">
       <div class="globals-block">
-        <div class="label">Volumen mensual TOTAL operación</div>
+        <div class="label">Volumen mensual TOTAL</div>
         <input type="number" id="volTotal" value="1000" min="1">
-        <div class="helper">Total de guías mensuales (denominador para prorratear los costos fijos generales)</div>
+        <div class="helper">Total de guías mensuales de toda la operación</div>
       </div>
       <div class="globals-block">
         <div class="label">Margen objetivo (sobre venta)</div>
         <input type="number" id="margen" value="30" min="0" max="99" step="0.1">
-        <div class="helper">precio = costo ÷ (1 - margen). 30% = ganancia 30% del precio final</div>
+        <div class="helper">precio = costo variable ÷ (1 - margen)</div>
       </div>
     </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 02 — Costos fijos generales -->
+  <!-- 02 — Catálogo de vehículos -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num">02</span>
-      <h2>Costos fijos generales</h2>
-      <span class="desc">Estructura mensual única — se prorratea linealmente por guía</span>
-    </div>
-    <div class="fijos-generales" id="fijosGenerales"></div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
-  <!-- 03 — Catálogo de vehículos -->
-  <div class="section">
-    <div class="section-head">
-      <span class="section-num">03</span>
-      <h2>Catálogo de vehículos</h2>
-      <span class="desc">Tus vehículos disponibles · 1 m³ = 250 KG aforados</span>
-    </div>
+    <div class="section-head"><span class="section-num">02</span><h2>Catálogo de vehículos</h2><span class="desc">Compartido por todas las sucursales · 1 m³ = 250 KG</span></div>
     <div class="vehiculos-container">
       <table class="tarif vehiculos-table" id="tablaVehiculos"></table>
       <button class="add-veh-btn" onclick="agregarVehiculo()">+ Agregar vehículo</button>
@@ -83,128 +63,85 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 04 — Costos troncales -->
+  <!-- 03 — Pallet de troncal -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num">04</span>
-      <h2>Costos troncales</h2>
-      <span class="desc">Viaje desde HUB (Zona I) hacia cada zona destino · Pallet estándar</span>
-    </div>
+    <div class="section-head"><span class="section-num">03</span><h2>Pallet de troncal</h2><span class="desc">Medida estándar del pallet · Compartido por todas las sucursales</span></div>
     <div class="troncal-container">
       <div class="troncal-pallet-info">
         <div class="pallet-label">Capacidad del pallet estándar</div>
         <div class="pallet-inputs">
-          <span><input type="number" id="palletLargo" value="1" min="0.1" step="0.1"> m</span>
-          <span class="x">×</span>
-          <span><input type="number" id="palletAncho" value="1.2" min="0.1" step="0.1"> m</span>
-          <span class="x">×</span>
+          <span><input type="number" id="palletLargo" value="1" min="0.1" step="0.1"> m</span><span class="x">×</span>
+          <span><input type="number" id="palletAncho" value="1.2" min="0.1" step="0.1"> m</span><span class="x">×</span>
           <span><input type="number" id="palletAlto" value="1.5" min="0.1" step="0.1"> m</span>
           <span class="equals">=</span>
           <span class="pallet-result" id="palletM3">1.8 m³</span>
           <span class="pallet-result-kg" id="palletKgAforado">450 KG aforados</span>
         </div>
       </div>
-      <table class="tarif troncal-table" id="tablaTroncal"></table>
     </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 05 — Costos variables por zona × ruta -->
+  <!-- 04 — Mix de rutas -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num">05</span>
-      <h2>Costos variables por zona × ruta (Última milla)</h2>
-      <span class="desc">Para cada Zona × Ruta km: vehículo + costo del viaje</span>
-    </div>
-    <div class="zonas-rutas" id="zonasRutas"></div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
-  <div class="step-arrow">▼</div>
-
-  <!-- 06 — Mix de rutas -->
-  <div class="section">
-    <div class="section-head">
-      <span class="section-num cyan">06</span>
-      <h2>Mix de rutas</h2>
-      <span class="desc">% del volumen que cae en cada rango de km · Mismo mix para las 4 zonas</span>
-    </div>
+    <div class="section-head"><span class="section-num cyan">04</span><h2>Mix de rutas</h2><span class="desc">% del volumen por rango de km · Mismo mix para todas las sucursales</span></div>
     <div class="mix-rutas-panel">
       <div class="mix-rutas-grid" id="mixRutasGrid"></div>
       <div class="mix-rutas-total" id="mixRutasTotal">Total: 100%</div>
-      <div class="mix-rutas-helper">Cada % representa qué porcentaje de tus guías cae en esa ruta. Si la suma no es 100%, los precios se calculan igualmente pero el total ponderado no es exacto.</div>
+      <div class="mix-rutas-helper">Cada % representa qué porcentaje de tus guías cae en esa ruta dentro de cada sucursal.</div>
     </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 07 — Absorción -->
+  <!-- 05 — Sucursales -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num cyan">07</span>
-      <h2>Absorción de costos fijos</h2>
-      <span class="desc">Cuánto de tus fijos repercute el tarifario sugerido</span>
+    <div class="section-head"><span class="section-num">05</span><h2>Sucursales</h2><span class="desc">Cada sucursal: fijos + zonas + troncal + última milla</span></div>
+    <div class="sucursales-toolbar">
+      <div class="suc-contador">Sucursales cargadas: <strong id="contadorSuc">0</strong></div>
+      <button class="add-suc-btn" onclick="agregarSucursal()">+ Agregar sucursal</button>
     </div>
-    <div class="absorcion-panel">
-      <h3>% de costos fijos a trasladar al tarifario</h3>
-      <div class="sub">100% = el tarifario cubre toda tu estructura · Bajalo si querés ofrecer tarifas más competitivas. El resto lo absorbe la empresa con otros ingresos.</div>
-      <div class="slider-wrap">
-        <div>
-          <input type="range" id="absorCot" min="0" max="100" value="100" step="1">
-          <div class="slider-marks">
-            <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
-          </div>
-        </div>
-        <div class="slider-display"><span id="absorCotVal">100</span><span class="pct">%</span></div>
+    <div id="sucursalesCont"></div>
+  </div>
+
+  <div class="step-arrow">▼</div>
+
+  <!-- 06 — Tarifario sugerido (editable) -->
+  <div class="section">
+    <div class="section-head"><span class="section-num final">06</span><h2 class="final">Tarifario sugerido</h2><span class="desc">Precio por zona (solo variables + margen) · Editable</span></div>
+    <div class="tarifario-toolbar">
+      <div class="tarifario-leyenda">
+        <span class="leyenda-item"><span class="manual-dot">●</span> celda editada manualmente</span>
+        <span class="leyenda-sep">·</span>
+        <span style="color:#666;">Tocá cualquier precio para editarlo a mano</span>
       </div>
+      <button class="restaurar-btn" onclick="restaurarTodoTarifario()">↻ Restaurar todo a sugerido</button>
     </div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
-  <!-- 08 — Tarifario sugerido -->
-  <div class="section">
-    <div class="section-head">
-      <span class="section-num final">08</span>
-      <h2 class="final">Tarifario sugerido</h2>
-      <span class="desc">Precio único por zona (promedio ponderado por mix de rutas)</span>
-    </div>
-    <div class="tarifario-final active" id="tarifarioFinal">
+    <div class="tarifario-final active">
       <table class="output" id="tablaTarifario"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Los KG son <strong>aforados</strong>: peso_aforado = max(peso_real, m³ × 250). 
-      La fila "KG excedente" es el precio por cada KG aforado adicional a partir de los 50 KG.
-      Estos precios YA incluyen: costos fijos + troncal + última milla + margen.
+      Los KG son <strong>aforados</strong>: peso_aforado = max(peso real, m³ × 250). El precio sale de los costos variables (última milla + troncal) ponderados por mix de rutas y promediados entre las sucursales que atienden cada zona, con el modelo aforo-vs-jornada. <strong>No incluye costos fijos</strong> (esos se cubren con el volumen, ver punto de equilibrio).
     </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 09 — Punto de equilibrio -->
+  <!-- 07 — Punto de equilibrio por sucursal -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num cyan">09</span>
-      <h2>Punto de equilibrio</h2>
-      <span class="desc">Guías de 25 KG aforados necesarias para cubrir costos fijos por zona</span>
-    </div>
+    <div class="section-head"><span class="section-num cyan">07</span><h2>Punto de equilibrio por sucursal</h2><span class="desc">Guías mínimas para cubrir los fijos de cada sucursal</span></div>
     <div class="output-table">
       <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Cada celda muestra cuántas guías de 25 KG aforados necesitás vender por zona para cubrir el 100% de tus costos fijos, usando el promedio ponderado de rutas.
+      Cada sucursal cobra la <strong>tarifa publicada</strong> de las zonas que atiende (peso ref. 25 KG), pero con sus <strong>costos variables propios</strong>. La contribución (lo que sobra por guía) cubre sus fijos. El equilibrio te dice cuántas guías mensuales necesita esa sucursal para no perder plata.
     </div>
   </div>
 
-  <!-- 10 — Historial -->
+  <!-- 08 — Historial -->
   <div class="section">
-    <div class="section-head">
-      <span class="section-num cyan">10</span>
-      <h2>Historial de tarifarios</h2>
-      <span class="desc">Últimas 50 versiones del tarifario archivadas</span>
-    </div>
+    <div class="section-head"><span class="section-num cyan">08</span><h2>Historial de tarifarios</h2><span class="desc">Últimas 50 versiones archivadas</span></div>
     <div id="historialContainer">
       <div class="empty-historial" id="emptyHistorial">
         <div class="empty-icon">📋</div>
@@ -216,60 +153,41 @@
   </div>
 
   <div class="ornament">· ·  ·</div>
-  <div class="footer-note">
-    Los datos se guardan automáticamente en este navegador. Para borrarlos usá "Reset".
-  </div>
+  <div class="footer-note">Los datos se guardan automáticamente en este navegador. Para borrarlos usá "Reset".</div>
 </div>
 
-<!-- MODAL exportar PDF -->
+<!-- MODAL PDF -->
 <div class="modal-backdrop" id="modalPDF">
   <div class="modal">
-    <div class="modal-logo">
-      <span class="dot"></span>
-      <span class="text">SOUTHPOST</span>
-    </div>
+    <div class="modal-logo"><span class="dot"></span><span class="text">SOUTHPOST</span></div>
     <h2>Exportar tarifario</h2>
-    <p class="subtitle">¿Con qué nombre querés guardar este tarifario? Se va a usar en el PDF y en el archivo del histórico.</p>
-    <div class="input-label">Nombre del tarifario / archivo</div>
+    <p class="subtitle">¿Con qué nombre querés guardar este tarifario? Se usa en el PDF y en el histórico.</p>
+    <div class="input-label">Nombre del tarifario</div>
     <input type="text" class="client-input" id="modalClientName" placeholder="Ej: Tarifario Mayo 2026" autocomplete="off">
-    <div class="modal-actions">
-      <button class="modal-btn" onclick="cerrarModal()">Cancelar</button>
-      <button class="modal-btn primary" onclick="confirmarExportPDF()">Generar PDF</button>
-    </div>
+    <div class="modal-actions"><button class="modal-btn" onclick="cerrarModal()">Cancelar</button><button class="modal-btn primary" onclick="confirmarExportPDF()">Generar PDF</button></div>
   </div>
 </div>
 
-<!-- MODAL guardar al historial -->
+<!-- MODAL guardar -->
 <div class="modal-backdrop" id="modalGuardar">
   <div class="modal">
-    <div class="modal-logo">
-      <span class="dot"></span>
-      <span class="text">SOUTHPOST</span>
-    </div>
+    <div class="modal-logo"><span class="dot"></span><span class="text">SOUTHPOST</span></div>
     <h2>Guardar al historial</h2>
-    <p class="subtitle">Vamos a archivar este tarifario (sin generar PDF) y descargar el respaldo Excel.</p>
+    <p class="subtitle">Archivamos este tarifario (sin PDF) y descargamos el Excel.</p>
     <div class="input-label">Nombre del tarifario</div>
     <input type="text" class="client-input" id="modalGuardarClientName" placeholder="Ej: Tarifario Mayo 2026" autocomplete="off">
-    <div class="modal-actions">
-      <button class="modal-btn" onclick="cerrarModalGuardar()">Cancelar</button>
-      <button class="modal-btn primary" onclick="confirmarGuardarHistorial()">Guardar</button>
-    </div>
+    <div class="modal-actions"><button class="modal-btn" onclick="cerrarModalGuardar()">Cancelar</button><button class="modal-btn primary" onclick="confirmarGuardarHistorial()">Guardar</button></div>
   </div>
 </div>
 
 <!-- MODAL detalle -->
 <div class="modal-backdrop" id="modalDetalle">
   <div class="modal modal-wide">
-    <div class="modal-logo">
-      <span class="dot"></span>
-      <span class="text">SOUTHPOST</span>
-    </div>
-    <h2 id="detalleTitulo">Detalle de tarifario</h2>
+    <div class="modal-logo"><span class="dot"></span><span class="text">SOUTHPOST</span></div>
+    <h2 id="detalleTitulo">Detalle</h2>
     <p class="subtitle" id="detalleFecha">—</p>
     <div id="detalleContent" style="max-height: 60vh; overflow-y: auto; margin-top: 16px;"></div>
-    <div class="modal-actions">
-      <button class="modal-btn" onclick="cerrarModalDetalle()">Cerrar</button>
-    </div>
+    <div class="modal-actions"><button class="modal-btn" onclick="cerrarModalDetalle()">Cerrar</button></div>
   </div>
 </div>
 

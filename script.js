@@ -1,12 +1,11 @@
 /* ====================================================
-   SOUTHPOST — Calculadora de tarifario v8 (Aforo)
+   SOUTHPOST — Calculadora de tarifario v11 (Sucursales)
    ==================================================== */
 
 const FACTOR_AFORO = 250; // 1 m³ = 250 KG aforados (hardcoded)
-
 const ZONAS = ['ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV'];
+const ZONAS_KEY = ['Z1', 'Z2', 'Z3', 'Z4'];
 
-// Rutas km
 const RUTAS = [
   { id: 'A', label: 'Ruta A', km: '0 - 50 km' },
   { id: 'B', label: 'Ruta B', km: '51 - 100 km' },
@@ -15,34 +14,39 @@ const RUTAS = [
   { id: 'E', label: 'Ruta E', km: '+201 km' },
 ];
 
-// 18 pesos de la tabla + 1 excedente
 const PESOS_TARIFA = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 
-// Campos de fijos
-const CAMPOS_FIJOS_GENERALES = [
+const CONCEPTOS_FIJOS = [
   { key: 'alquiler',    label: 'Alquiler / depósito' },
   { key: 'personal',    label: 'Personal' },
-  { key: 'servicios',   label: 'Servicios (luz, agua, internet)' },
-  { key: 'combustible', label: 'Combustible / vehículos' },
+  { key: 'servicios',   label: 'Servicios' },
   { key: 'seguros',     label: 'Seguros e impuestos' },
-  { key: 'insumos',     label: 'Insumos (cajas, etiquetas)' },
   { key: 'otros',       label: 'Otros gastos' },
 ];
 
-// Estado inicial
+const PESO_REF_EQUILIBRIO = 25; // peso de referencia para el punto de equilibrio
+
+let _sucId = 0;
+function nextSucId() { _sucId++; return 'suc_' + Date.now() + '_' + _sucId; }
+
+function sucursalNueva(nombre) {
+  const suc = {
+    id: nextSucId(),
+    nombre: nombre || 'Nueva sucursal',
+    fijos: {},
+    zonas: { Z1: false, Z2: false, Z3: false, Z4: false },
+    troncal: 0,
+    rutas: {},
+  };
+  CONCEPTOS_FIJOS.forEach(c => suc.fijos[c.key] = 0);
+  RUTAS.forEach(r => suc.rutas[r.id] = { vehiculoId: null, costoViaje: 0, paradas: 0 });
+  return suc;
+}
+
 const DEFAULTS = {
   volTotal: 1000,
   margen: 30,
-  absorCot: 100,
-  fijosGenerales: {
-    alquiler: 800000, personal: 1500000, servicios: 200000, combustible: 300000,
-    seguros: 150000, insumos: 100000, otros: 0,
-  },
-  // Pallet estándar 1 × 1,2 × 1,5 = 1,8 m³ = 450 KG aforados
   pallet: { largo: 1.0, ancho: 1.2, alto: 1.5 },
-  // Costos troncales por zona destino (Z.I = 0, es el hub)
-  troncalPorZona: [0, 80000, 120000, 200000],
-  // Mix de rutas (% del volumen total por cada ruta A-E)
   mixRutas: { A: 50, B: 25, C: 15, D: 7, E: 3 },
   vehiculos: [
     { id: 'v_moto',   nombre: 'Moto',          m3: 0.3 },
@@ -50,45 +54,31 @@ const DEFAULTS = {
     { id: 'v_camchi', nombre: 'Camión chico',   m3: 3.0 },
     { id: 'v_cam',    nombre: 'Camión grande',  m3: 6.0 },
   ],
-  // matriz [zona][ruta] = {vehiculoId, costoViaje}
-  rutas: [
-    [ // Zona I
-      { vehiculoId: 'v_util',   costoViaje: 100000 },
-      { vehiculoId: 'v_util',   costoViaje: 150000 },
-      { vehiculoId: 'v_camchi', costoViaje: 250000 },
-      { vehiculoId: 'v_camchi', costoViaje: 320000 },
-      { vehiculoId: 'v_cam',    costoViaje: 480000 },
-    ],
-    [ // Zona II
-      { vehiculoId: 'v_util',   costoViaje: 130000 },
-      { vehiculoId: 'v_util',   costoViaje: 180000 },
-      { vehiculoId: 'v_camchi', costoViaje: 290000 },
-      { vehiculoId: 'v_camchi', costoViaje: 380000 },
-      { vehiculoId: 'v_cam',    costoViaje: 560000 },
-    ],
-    [ // Zona III
-      { vehiculoId: 'v_util',   costoViaje: 160000 },
-      { vehiculoId: 'v_util',   costoViaje: 220000 },
-      { vehiculoId: 'v_camchi', costoViaje: 340000 },
-      { vehiculoId: 'v_camchi', costoViaje: 450000 },
-      { vehiculoId: 'v_cam',    costoViaje: 660000 },
-    ],
-    [ // Zona IV
-      { vehiculoId: 'v_util',   costoViaje: 200000 },
-      { vehiculoId: 'v_util',   costoViaje: 280000 },
-      { vehiculoId: 'v_camchi', costoViaje: 420000 },
-      { vehiculoId: 'v_camchi', costoViaje: 560000 },
-      { vehiculoId: 'v_cam',    costoViaje: 820000 },
-    ],
-  ],
+  sucursales: [],
+  // Ediciones manuales del tarifario: { "Z2_25": 12345 } -> precio fijado a mano
+  tarifarioManual: {},
 };
 
-const STORE_KEY = 'tarifario_southpost_v8';
-const HIST_KEY = 'tarifario_southpost_v8_historial';
+const STORE_KEY = 'tarifario_southpost_v11';
+const HIST_KEY = 'tarifario_southpost_v11_historial';
 const HIST_MAX = 50;
 
 let state = loadState();
-let zonaActivaTab = 0;
+
+function sucursalEjemplo() {
+  const s = sucursalNueva('Rosario');
+  s.fijos = { alquiler: 350000, personal: 600000, servicios: 120000, seguros: 80000, otros: 50000 };
+  s.zonas = { Z1: false, Z2: true, Z3: true, Z4: true };
+  s.troncal = 90000;
+  s.rutas = {
+    A: { vehiculoId: 'v_util',   costoViaje: 90000,  paradas: 55 },
+    B: { vehiculoId: 'v_util',   costoViaje: 130000, paradas: 40 },
+    C: { vehiculoId: 'v_camchi', costoViaje: 240000, paradas: 28 },
+    D: { vehiculoId: 'v_camchi', costoViaje: 310000, paradas: 18 },
+    E: { vehiculoId: 'v_cam',    costoViaje: 460000, paradas: 10 },
+  };
+  return s;
+}
 
 function loadState() {
   try {
@@ -97,26 +87,16 @@ function loadState() {
       const parsed = JSON.parse(s);
       const base = JSON.parse(JSON.stringify(DEFAULTS));
       for (const k in parsed) {
-        if (k === 'fijosGenerales' && typeof parsed.fijosGenerales === 'object') {
-          base.fijosGenerales = { ...base.fijosGenerales, ...parsed.fijosGenerales };
-        } else if (k === 'pallet' && typeof parsed.pallet === 'object') {
+        if (k === 'pallet' && typeof parsed.pallet === 'object') {
           base.pallet = { ...base.pallet, ...parsed.pallet };
-        } else if (k === 'troncalPorZona' && Array.isArray(parsed.troncalPorZona)) {
-          for (let i = 0; i < 4; i++) {
-            if (parsed.troncalPorZona[i] !== undefined) base.troncalPorZona[i] = parsed.troncalPorZona[i];
-          }
         } else if (k === 'mixRutas' && typeof parsed.mixRutas === 'object') {
           base.mixRutas = { ...base.mixRutas, ...parsed.mixRutas };
         } else if (k === 'vehiculos' && Array.isArray(parsed.vehiculos)) {
           base.vehiculos = parsed.vehiculos;
-        } else if (k === 'rutas' && Array.isArray(parsed.rutas)) {
-          for (let z = 0; z < 4; z++) {
-            if (parsed.rutas[z]) {
-              for (let r = 0; r < 5; r++) {
-                if (parsed.rutas[z][r]) base.rutas[z][r] = parsed.rutas[z][r];
-              }
-            }
-          }
+        } else if (k === 'sucursales' && Array.isArray(parsed.sucursales)) {
+          base.sucursales = parsed.sucursales;
+        } else if (k === 'tarifarioManual' && typeof parsed.tarifarioManual === 'object') {
+          base.tarifarioManual = parsed.tarifarioManual;
         } else {
           base[k] = parsed[k];
         }
@@ -124,59 +104,170 @@ function loadState() {
       return base;
     }
   } catch (e) { console.error('Load error:', e); }
-  return JSON.parse(JSON.stringify(DEFAULTS));
+  const init = JSON.parse(JSON.stringify(DEFAULTS));
+  init.sucursales = [sucursalEjemplo()];
+  return init;
 }
 
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
-    document.getElementById('saveState').textContent = '● GUARDADO';
-    document.getElementById('saveState').style.color = 'var(--success)';
-    document.getElementById('lastUpdate').textContent = 'Última edición: ' + new Date().toLocaleTimeString('es-AR');
+    const ss = document.getElementById('saveState');
+    if (ss) { ss.textContent = '● GUARDADO'; ss.style.color = 'var(--success)'; }
+    const lu = document.getElementById('lastUpdate');
+    if (lu) lu.textContent = 'Última edición: ' + new Date().toLocaleTimeString('es-AR');
   } catch (e) {
-    document.getElementById('saveState').textContent = '⚠ NO GUARDADO';
-    document.getElementById('saveState').style.color = 'var(--danger)';
+    const ss = document.getElementById('saveState');
+    if (ss) { ss.textContent = '⚠ NO GUARDADO'; ss.style.color = 'var(--danger)'; }
   }
 }
 
-/* ============= RENDER ============= */
-function renderFijosGenerales() {
-  const cont = document.getElementById('fijosGenerales');
-  let html = '';
-  CAMPOS_FIJOS_GENERALES.forEach(f => {
-    html += `<div class="input-row">
-      <label>${f.label}</label>
-      <input type="number" data-campo-fijo="${f.key}" value="${state.fijosGenerales[f.key]||0}" min="0" step="1000">
-    </div>`;
+/* ============= HELPERS ============= */
+function fmt(n) {
+  if (!isFinite(n) || isNaN(n)) return '—';
+  const sign = n < 0 ? '-' : '';
+  return sign + '$ ' + Math.abs(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+function escaparHTML(s) {
+  return String(s||'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function palletM3() {
+  return (state.pallet.largo || 0) * (state.pallet.ancho || 0) * (state.pallet.alto || 0);
+}
+function palletKgAforado() {
+  return palletM3() * FACTOR_AFORO;
+}
+function totalMixRutas() {
+  return RUTAS.reduce((acc, r) => acc + (+state.mixRutas[r.id] || 0), 0);
+}
+function totalFijosSucursal(suc) {
+  return CONCEPTOS_FIJOS.reduce((a, c) => a + (+suc.fijos[c.key] || 0), 0);
+}
+function totalFijosGlobal() {
+  return state.sucursales.reduce((a, s) => a + totalFijosSucursal(s), 0);
+}
+function vehiculoPorId(id) {
+  return state.vehiculos.find(v => v.id === id) || null;
+}
+
+/* ============= CÁLCULO ============= */
+// Precio variable (UM + troncal) ponderado por mix, para una sucursal y un peso.
+// SIN fijos. Con modelo aforo-vs-jornada.
+function precioVariableSucursal(suc, peso) {
+  const margenDec = state.margen / 100;
+  const factorPrecio = (1 - margenDec) > 0 ? 1 / (1 - margenDec) : 0;
+  const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
+  const sumMix = totalMixRutas() > 0 ? totalMixRutas() : 1;
+  let pp = 0;
+  RUTAS.forEach(r => {
+    const rd = suc.rutas[r.id];
+    const veh = vehiculoPorId(rd.vehiculoId);
+    const m3 = veh ? veh.m3 : 0;
+    const capAforoTotal = m3 * FACTOR_AFORO;
+    const entranAforo = peso > 0 ? capAforoTotal / peso : 0;
+    const entranJornada = rd.paradas || 0;
+    const capEf = Math.min(entranAforo, entranJornada);
+    const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
+    const costoVar = peso * troncalKg + umGuia;
+    const precio = costoVar * factorPrecio;
+    pp += precio * ((+state.mixRutas[r.id] || 0) / sumMix);
   });
-  html += `<div class="total-fijos">
-    <span class="lbl">Total fijo mensual</span>
-    <span class="val" id="totalFijoGeneral">$ 0</span>
-  </div>`;
-  cont.innerHTML = html;
-  cont.querySelectorAll('input[type=number]').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const k = e.target.dataset.campoFijo;
-      state.fijosGenerales[k] = +e.target.value || 0;
-      saveState();
-      recalc();
-    });
+  return pp;
+}
+
+// Costo variable puro (sin margen) ponderado, para una sucursal y un peso.
+function costoVariableSucursal(suc, peso) {
+  const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
+  const sumMix = totalMixRutas() > 0 ? totalMixRutas() : 1;
+  let cv = 0;
+  RUTAS.forEach(r => {
+    const rd = suc.rutas[r.id];
+    const veh = vehiculoPorId(rd.vehiculoId);
+    const m3 = veh ? veh.m3 : 0;
+    const capEf = Math.min(peso > 0 ? (m3 * FACTOR_AFORO) / peso : 0, rd.paradas || 0);
+    const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
+    cv += (peso * troncalKg + umGuia) * ((+state.mixRutas[r.id] || 0) / sumMix);
   });
+  return cv;
+}
+
+// Precio sugerido por (zona, peso): promedio simple de sucursales que atienden esa zona.
+function precioSugeridoZona(zonaKey, peso) {
+  const sucs = state.sucursales.filter(s => s.zonas[zonaKey]);
+  if (sucs.length === 0) return null;
+  const suma = sucs.reduce((a, s) => a + precioVariableSucursal(s, peso), 0);
+  return suma / sucs.length;
+}
+
+// Precio FINAL (manual si existe, sino sugerido)
+function precioFinalZona(zonaKey, peso) {
+  const manualKey = zonaKey + '_' + peso;
+  if (state.tarifarioManual[manualKey] !== undefined && state.tarifarioManual[manualKey] !== null) {
+    return state.tarifarioManual[manualKey];
+  }
+  return precioSugeridoZona(zonaKey, peso);
+}
+
+function esManual(zonaKey, peso) {
+  const manualKey = zonaKey + '_' + peso;
+  return state.tarifarioManual[manualKey] !== undefined && state.tarifarioManual[manualKey] !== null;
+}
+
+// Cálculo del equilibrio de una sucursal:
+// cobra la tarifa publicada (final) promedio de las zonas que atiende, con sus costos variables propios.
+function equilibrioSucursal(suc) {
+  const zonasAt = ZONAS_KEY.filter(z => suc.zonas[z]);
+  if (zonasAt.length === 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt };
+  // precio que cobra: promedio de tarifas finales (peso ref) de las zonas que atiende
+  let preciosPub = [];
+  zonasAt.forEach(z => {
+    const p = precioFinalZona(z, PESO_REF_EQUILIBRIO);
+    if (p !== null) preciosPub.push(p);
+  });
+  if (preciosPub.length === 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt };
+  const precioCobra = preciosPub.reduce((a, b) => a + b, 0) / preciosPub.length;
+  const cv = costoVariableSucursal(suc, PESO_REF_EQUILIBRIO);
+  const contrib = precioCobra - cv;
+  const fijo = totalFijosSucursal(suc);
+  const guias = contrib > 0 ? Math.ceil(fijo / contrib) : null;
+  return { guias, precioCobra, cv, contrib, zonasAt, fijo };
+}
+
+/* ============= RENDER: GLOBALES ============= */
+function renderGlobales() {
+  const v = document.getElementById('volTotal'); if (v) v.value = state.volTotal;
+  const m = document.getElementById('margen'); if (m) m.value = state.margen;
+  const pl = document.getElementById('palletLargo'); if (pl) pl.value = state.pallet.largo;
+  const pa = document.getElementById('palletAncho'); if (pa) pa.value = state.pallet.ancho;
+  const ph = document.getElementById('palletAlto'); if (ph) ph.value = state.pallet.alto;
+  actualizarPalletDerivado();
+
+  if (v && !v.dataset.bound) { v.addEventListener('input', e => { state.volTotal = +e.target.value || 1; saveState(); recalc(); }); v.dataset.bound = '1'; }
+  if (m && !m.dataset.bound) { m.addEventListener('input', e => { state.margen = +e.target.value || 0; saveState(); recalc(); }); m.dataset.bound = '1'; }
+  [pl, pa, ph].forEach(inp => {
+    if (inp && !inp.dataset.bound) {
+      const campo = inp.id === 'palletLargo' ? 'largo' : inp.id === 'palletAncho' ? 'ancho' : 'alto';
+      inp.addEventListener('input', e => { state.pallet[campo] = +e.target.value || 0; saveState(); actualizarPalletDerivado(); recalc(); });
+      inp.dataset.bound = '1';
+    }
+  });
+}
+function actualizarPalletDerivado() {
+  const elM3 = document.getElementById('palletM3');
+  const elKg = document.getElementById('palletKgAforado');
+  if (elM3) elM3.textContent = palletM3().toLocaleString('es-AR', {maximumFractionDigits: 2}) + ' m³';
+  if (elKg) elKg.textContent = palletKgAforado().toLocaleString('es-AR', {maximumFractionDigits: 0}) + ' KG aforados';
 }
 
 function renderVehiculos() {
   const tbl = document.getElementById('tablaVehiculos');
-  let html = `<thead><tr>
-    <th>Vehículo</th>
-    <th style="width:120px;">Capacidad m³</th>
-    <th style="text-align:right; width:160px;">KG aforados</th>
-    <th style="width:100px;">Acción</th>
-  </tr></thead><tbody>`;
-  state.vehiculos.forEach((v, i) => {
-    const kgAf = (v.m3 || 0) * FACTOR_AFORO;
+  if (!tbl) return;
+  let html = `<thead><tr><th>Vehículo</th><th style="width:120px;">Capacidad m³</th><th style="text-align:right; width:150px;">KG aforados</th><th style="width:90px;">Acción</th></tr></thead><tbody>`;
+  state.vehiculos.forEach((veh, i) => {
+    const kgAf = (veh.m3 || 0) * FACTOR_AFORO;
     html += `<tr>
-      <td><input type="text" data-veh-i="${i}" data-veh-campo="nombre" value="${escaparHTML(v.nombre)}"></td>
-      <td><input type="number" data-veh-i="${i}" data-veh-campo="m3" value="${v.m3}" min="0.01" step="0.1"></td>
+      <td><input type="text" data-veh-i="${i}" data-veh-campo="nombre" value="${escaparHTML(veh.nombre)}"></td>
+      <td><input type="number" data-veh-i="${i}" data-veh-campo="m3" value="${veh.m3}" min="0.01" step="0.1"></td>
       <td class="derived" id="vehKgAf-${i}">${kgAf.toLocaleString('es-AR')} KG</td>
       <td><button class="del-btn" onclick="eliminarVehiculo(${i})">Eliminar</button></td>
     </tr>`;
@@ -185,559 +276,338 @@ function renderVehiculos() {
   tbl.innerHTML = html;
   tbl.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('input', e => {
-      const i = +e.target.dataset.vehI;
-      const campo = e.target.dataset.vehCampo;
+      const i = +e.target.dataset.vehI, campo = e.target.dataset.vehCampo;
       if (campo === 'm3') {
         state.vehiculos[i][campo] = +e.target.value || 0;
-        // Solo actualizar la celda derivada de KG aforados
         const elKg = document.getElementById('vehKgAf-' + i);
         if (elKg) elKg.textContent = ((state.vehiculos[i].m3 || 0) * FACTOR_AFORO).toLocaleString('es-AR') + ' KG';
+        actualizarDropdownsVehiculosSucursales();
       } else {
         state.vehiculos[i][campo] = e.target.value;
+        actualizarDropdownsVehiculosSucursales();
       }
       saveState();
-      // Actualizar dropdowns de zonas/rutas (texto solo, sin regenerar inputs)
-      actualizarDropdownsVehiculos();
-      // Actualizar columnas derivadas de zonas/rutas
-      actualizarDerivadasRutas();
       recalc();
     });
   });
 }
-
 function agregarVehiculo() {
-  const nuevoId = 'v_' + Date.now();
-  state.vehiculos.push({ id: nuevoId, nombre: 'Nuevo vehículo', m3: 1.0 });
-  saveState();
-  renderVehiculos();
-  renderZonasRutas();
-  recalc();
+  state.vehiculos.push({ id: 'v_' + Date.now(), nombre: 'Nuevo vehículo', m3: 1.0 });
+  saveState(); renderVehiculos(); renderSucursales(); recalc();
 }
-
 function eliminarVehiculo(i) {
-  if (state.vehiculos.length <= 1) {
-    toast('Debe quedar al menos un vehículo', true);
-    return;
-  }
-  const id = state.vehiculos[i].id;
-  // Verificar si está siendo usado
-  let usadoEn = [];
-  for (let z = 0; z < 4; z++) {
-    for (let r = 0; r < 5; r++) {
-      if (state.rutas[z][r].vehiculoId === id) {
-        usadoEn.push(`${ZONAS[z]} ${RUTAS[r].label}`);
-      }
-    }
-  }
-  if (usadoEn.length > 0) {
-    if (!confirm(`Este vehículo está siendo usado en ${usadoEn.length} combinación(es). Si lo eliminás, esas filas van a quedar con un vehículo no válido. ¿Continuar?`)) return;
-  }
+  if (state.vehiculos.length <= 1) { toast('Debe quedar al menos un vehículo', true); return; }
+  if (!confirm('¿Eliminar este vehículo? Las rutas que lo usaban quedarán sin vehículo asignado.')) return;
   state.vehiculos.splice(i, 1);
-  saveState();
-  renderVehiculos();
-  renderZonasRutas();
-  recalc();
+  saveState(); renderVehiculos(); renderSucursales(); recalc();
 }
 
-/* ============= TRONCAL ============= */
-function palletM3() {
-  return (state.pallet.largo || 0) * (state.pallet.ancho || 0) * (state.pallet.alto || 0);
-}
-function palletKgAforado() {
-  return palletM3() * FACTOR_AFORO;
-}
-
-function renderTroncal() {
-  // Solo necesito setear los inputs del pallet y la tabla la primera vez
-  const palletL = document.getElementById('palletLargo');
-  const palletA = document.getElementById('palletAncho');
-  const palletH = document.getElementById('palletAlto');
-  if (palletL) palletL.value = state.pallet.largo;
-  if (palletA) palletA.value = state.pallet.ancho;
-  if (palletH) palletH.value = state.pallet.alto;
-  actualizarPalletDerivado();
-
-  // Tabla de costos por zona destino
-  const tbl = document.getElementById('tablaTroncal');
-  let html = `<thead><tr>
-    <th>Destino (desde HUB)</th>
-    <th style="width:180px; text-align:right;">Costo por pallet</th>
-    <th style="text-align:right;">$ / KG aforado</th>
-    <th style="text-align:right;">$ / m³</th>
-  </tr></thead><tbody>`;
-  for (let z = 1; z < 4; z++) { // Z.I no tiene troncal
-    const costo = state.troncalPorZona[z] || 0;
-    const kgAf = palletKgAforado();
-    const costoKgAf = kgAf > 0 ? costo / kgAf : 0;
-    const m3 = palletM3();
-    const costoM3 = m3 > 0 ? costo / m3 : 0;
-    html += `<tr>
-      <td><span class="zona-label">${ZONAS[z]}</span></td>
-      <td><input type="number" data-troncal-z="${z}" value="${costo}" min="0" step="1000"></td>
-      <td class="derived" id="troncalKgAf-${z}">${fmt(costoKgAf)}<span class="sub">por KG aforado</span></td>
-      <td class="derived" id="troncalM3-${z}">${fmt(costoM3)}<span class="sub">por m³</span></td>
-    </tr>`;
-  }
-  html += `</tbody>`;
-  tbl.innerHTML = html;
-
-  // Listeners
-  tbl.querySelectorAll('input').forEach(inp => {
-    inp.addEventListener('input', e => {
-      const z = +e.target.dataset.troncalZ;
-      state.troncalPorZona[z] = +e.target.value || 0;
-      saveState();
-      actualizarTroncalDerivadoZona(z);
-      recalc();
-    });
-  });
-
-  // Listeners del pallet (solo una vez)
-  if (palletL && !palletL.dataset.bound) {
-    [palletL, palletA, palletH].forEach(inp => {
-      const campo = inp.id === 'palletLargo' ? 'largo' : inp.id === 'palletAncho' ? 'ancho' : 'alto';
-      inp.addEventListener('input', e => {
-        state.pallet[campo] = +e.target.value || 0;
-        saveState();
-        actualizarPalletDerivado();
-        // Actualizar todas las derivadas del troncal
-        for (let z = 1; z < 4; z++) actualizarTroncalDerivadoZona(z);
-        recalc();
-      });
-      inp.dataset.bound = '1';
-    });
-  }
-}
-
-function actualizarPalletDerivado() {
-  const m3 = palletM3();
-  const kg = palletKgAforado();
-  const elM3 = document.getElementById('palletM3');
-  const elKg = document.getElementById('palletKgAforado');
-  if (elM3) elM3.textContent = m3.toLocaleString('es-AR', {maximumFractionDigits: 2}) + ' m³';
-  if (elKg) elKg.textContent = kg.toLocaleString('es-AR', {maximumFractionDigits: 0}) + ' KG aforados';
-}
-
-function actualizarTroncalDerivadoZona(z) {
-  const costo = state.troncalPorZona[z] || 0;
-  const kgAf = palletKgAforado();
-  const m3 = palletM3();
-  const costoKgAf = kgAf > 0 ? costo / kgAf : 0;
-  const costoM3 = m3 > 0 ? costo / m3 : 0;
-  const elKg = document.getElementById(`troncalKgAf-${z}`);
-  const elM3 = document.getElementById(`troncalM3-${z}`);
-  if (elKg) elKg.innerHTML = `${fmt(costoKgAf)}<span class="sub">por KG aforado</span>`;
-  if (elM3) elM3.innerHTML = `${fmt(costoM3)}<span class="sub">por m³</span>`;
-}
-
-/* ============= MIX DE RUTAS ============= */
 function renderMixRutas() {
   const grid = document.getElementById('mixRutasGrid');
   if (!grid) return;
   let html = '';
   RUTAS.forEach(r => {
-    const v = state.mixRutas[r.id] || 0;
     html += `<div class="mix-ruta-item">
-      <label>${r.label}</label>
-      <span class="km">${r.km}</span>
-      <div class="input-wrap">
-        <input type="number" data-mix="${r.id}" value="${v}" min="0" max="100" step="1">
-        <span class="pct-symbol">%</span>
-      </div>
+      <label>${r.label}</label><span class="km">${r.km}</span>
+      <div class="input-wrap"><input type="number" data-mix="${r.id}" value="${state.mixRutas[r.id]||0}" min="0" max="100" step="1"><span class="pct-symbol">%</span></div>
     </div>`;
   });
   grid.innerHTML = html;
   actualizarMixTotal();
-
-  grid.querySelectorAll('input[type=number]').forEach(inp => {
+  grid.querySelectorAll('input').forEach(inp => {
     inp.addEventListener('input', e => {
-      const id = e.target.dataset.mix;
-      state.mixRutas[id] = +e.target.value || 0;
-      saveState();
-      actualizarMixTotal();
-      recalc();
+      state.mixRutas[e.target.dataset.mix] = +e.target.value || 0;
+      saveState(); actualizarMixTotal(); recalc();
     });
   });
 }
-
-function totalMixRutas() {
-  return RUTAS.reduce((acc, r) => acc + (+state.mixRutas[r.id] || 0), 0);
-}
-
 function actualizarMixTotal() {
   const el = document.getElementById('mixRutasTotal');
   if (!el) return;
   const tot = totalMixRutas();
-  if (tot === 100) {
-    el.textContent = `Total: ${tot}%  ✓`;
-    el.classList.remove('error');
-  } else {
-    el.textContent = `Total: ${tot}%  ⚠️ debería ser 100%`;
-    el.classList.add('error');
-  }
+  el.textContent = tot === 100 ? `Total: ${tot}%  ✓` : `Total: ${tot}%  ⚠️ debería ser 100%`;
+  el.classList.toggle('error', tot !== 100);
 }
 
-function renderZonasRutas() {
-  const cont = document.getElementById('zonasRutas');
-  cont.innerHTML = '';
-  for (let z = 0; z < 4; z++) {
-    const card = document.createElement('div');
-    card.className = 'zona-rutas-card' + (z === 0 ? ' hub' : '');
-    let html = `<h3>${ZONAS[z]}</h3><div class="subtitle">${z === 0 ? 'Origen / Hub central' : 'Destino · Spoke'}</div>`;
-    html += `<table class="rutas-table">
-      <thead><tr>
-        <th style="width:120px;">Ruta</th>
-        <th style="width:220px;">Vehículo</th>
-        <th style="width:150px; text-align:right;">Costo viaje</th>
-        <th style="text-align:right;">$ / KG aforado</th>
-        <th style="text-align:right;">$ / m³</th>
-      </tr></thead><tbody>`;
-    for (let r = 0; r < 5; r++) {
-      const ruta = state.rutas[z][r];
-      const veh = state.vehiculos.find(v => v.id === ruta.vehiculoId);
-      const m3 = veh ? veh.m3 : 0;
-      const kgAf = m3 * FACTOR_AFORO;
-      const costoPorKgAf = kgAf > 0 ? ruta.costoViaje / kgAf : 0;
-      const costoPorM3 = m3 > 0 ? ruta.costoViaje / m3 : 0;
-      html += `<tr>
-        <td><span class="ruta-label">${RUTAS[r].label}<span class="ruta-km">${RUTAS[r].km}</span></span></td>
-        <td>
-          <select data-z="${z}" data-r="${r}" data-campo="vehiculoId" id="selVeh-${z}-${r}">
-            ${state.vehiculos.map(v => `<option value="${v.id}" ${v.id === ruta.vehiculoId ? 'selected' : ''}>${escaparHTML(v.nombre)} (${v.m3} m³)</option>`).join('')}
-          </select>
-        </td>
-        <td><input type="number" data-z="${z}" data-r="${r}" data-campo="costoViaje" value="${ruta.costoViaje}" min="0" step="1000"></td>
-        <td class="derived" id="rutaKgAf-${z}-${r}">${fmt(costoPorKgAf)}<div class="sub">por KG aforado</div></td>
-        <td class="derived" id="rutaM3-${z}-${r}">${fmt(costoPorM3)}<div class="sub">por m³</div></td>
-      </tr>`;
-    }
-    html += `</tbody></table>`;
-    card.innerHTML = html;
-    cont.appendChild(card);
+/* ============= RENDER: SUCURSALES ============= */
+function renderSucursales() {
+  const cont = document.getElementById('sucursalesCont');
+  if (!cont) return;
+  const cnt = document.getElementById('contadorSuc');
+  if (cnt) cnt.textContent = state.sucursales.length;
+
+  if (state.sucursales.length === 0) {
+    cont.innerHTML = `<div class="suc-empty"><div class="suc-empty-icon">🏪</div><div>No hay sucursales todavía. Tocá "+ Agregar sucursal" para empezar.</div></div>`;
+    return;
   }
 
-  cont.querySelectorAll('select, input').forEach(el => {
+  let html = '';
+  state.sucursales.forEach((suc, idx) => {
+    const totalFijo = totalFijosSucursal(suc);
+    html += `<div class="suc-card">
+      <div class="suc-header">
+        <input type="text" class="suc-nombre" data-suc="${suc.id}" data-campo="nombre" value="${escaparHTML(suc.nombre)}">
+        <button class="suc-del" onclick="eliminarSucursal('${suc.id}')">Eliminar</button>
+      </div>`;
+
+    // Fijos
+    html += `<div class="suc-section-label">Costos fijos mensuales</div><div class="suc-fijos-grid">`;
+    CONCEPTOS_FIJOS.forEach(c => {
+      html += `<div class="suc-fijo-item"><div class="suc-fijo-lbl">${c.label}</div>
+        <input type="number" data-suc="${suc.id}" data-fijo="${c.key}" value="${suc.fijos[c.key]||0}" min="0" step="1000"></div>`;
+    });
+    html += `</div><div class="suc-fijo-total">Total fijo: <strong id="sucFijoTotal-${suc.id}">${fmt(totalFijo)}</strong></div>`;
+
+    // Zonas
+    html += `<div class="suc-section-label">Zonas que atiende</div><div class="suc-zonas">`;
+    ZONAS_KEY.forEach((z, zi) => {
+      const ck = suc.zonas[z] ? 'checked' : '';
+      html += `<label class="suc-zona-chk"><input type="checkbox" data-suc="${suc.id}" data-zona="${z}" ${ck}> ${ZONAS[zi]}</label>`;
+    });
+    html += `</div>`;
+
+    // Troncal (un solo costo)
+    html += `<div class="suc-section-label">Troncal — costo de pallet a esta sucursal</div>
+      <div class="suc-troncal">
+        <input type="number" data-suc="${suc.id}" data-campo="troncal" value="${suc.troncal||0}" min="0" step="1000" placeholder="0">
+        <span class="suc-troncal-derived" id="sucTroncalKg-${suc.id}"></span>
+      </div>`;
+
+    // Última milla
+    html += `<div class="suc-section-label">Última milla por ruta</div>
+      <div class="suc-rutas-wrap"><table class="suc-rutas-table">
+      <thead><tr><th>Ruta</th><th>Vehículo</th><th style="text-align:right;">Costo viaje</th><th style="text-align:right;">Paradas/día</th><th style="text-align:right;">$/KG af.</th></tr></thead><tbody>`;
+    RUTAS.forEach(r => {
+      const rd = suc.rutas[r.id];
+      html += `<tr>
+        <td><strong>${r.label.replace('Ruta ','')}</strong> <span class="suc-ruta-km">${r.km}</span></td>
+        <td><select data-suc="${suc.id}" data-ruta="${r.id}" data-campo="vehiculoId">
+          <option value="">— elegir —</option>
+          ${state.vehiculos.map(v => `<option value="${v.id}" ${v.id===rd.vehiculoId?'selected':''}>${escaparHTML(v.nombre)} (${v.m3}m³)</option>`).join('')}
+        </select></td>
+        <td><input type="number" data-suc="${suc.id}" data-ruta="${r.id}" data-campo="costoViaje" value="${rd.costoViaje||0}" min="0" step="1000"></td>
+        <td><input type="number" data-suc="${suc.id}" data-ruta="${r.id}" data-campo="paradas" value="${rd.paradas||0}" min="0" step="1"></td>
+        <td class="derived" id="sucRutaKg-${suc.id}-${r.id}"></td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+  });
+  cont.innerHTML = html;
+  bindSucursales();
+  actualizarDerivadasSucursales();
+}
+
+function bindSucursales() {
+  const cont = document.getElementById('sucursalesCont');
+  if (!cont) return;
+  // Nombre, troncal
+  cont.querySelectorAll('input[data-campo], select[data-campo]').forEach(el => {
     const ev = el.tagName === 'SELECT' ? 'change' : 'input';
     el.addEventListener(ev, e => {
-      const z = +e.target.dataset.z;
-      const r = +e.target.dataset.r;
-      const c = e.target.dataset.campo;
-      if (c === 'costoViaje') {
-        state.rutas[z][r][c] = +e.target.value || 0;
-      } else {
-        state.rutas[z][r][c] = e.target.value;
+      const id = e.target.dataset.suc, campo = e.target.dataset.campo, ruta = e.target.dataset.ruta;
+      const suc = state.sucursales.find(s => s.id === id);
+      if (!suc) return;
+      if (ruta) {
+        if (campo === 'vehiculoId') suc.rutas[ruta][campo] = e.target.value || null;
+        else suc.rutas[ruta][campo] = +e.target.value || 0;
+        actualizarDerivadaRutaSuc(suc, ruta);
+      } else if (campo === 'nombre') {
+        suc[campo] = e.target.value;
+      } else if (campo === 'troncal') {
+        suc.troncal = +e.target.value || 0;
+        actualizarTroncalDerivadoSuc(suc);
+        ['A','B','C','D','E'].forEach(rid => actualizarDerivadaRutaSuc(suc, rid));
       }
       saveState();
-      // Actualizar solo las celdas derivadas de ESTA fila (no regenerar)
-      actualizarCeldaRutaDerivada(z, r);
+      recalc();
+    });
+  });
+  // Fijos
+  cont.querySelectorAll('input[data-fijo]').forEach(el => {
+    el.addEventListener('input', e => {
+      const id = e.target.dataset.suc, key = e.target.dataset.fijo;
+      const suc = state.sucursales.find(s => s.id === id);
+      if (!suc) return;
+      suc.fijos[key] = +e.target.value || 0;
+      const elTot = document.getElementById('sucFijoTotal-' + id);
+      if (elTot) elTot.textContent = fmt(totalFijosSucursal(suc));
+      saveState();
+      recalc();
+    });
+  });
+  // Zonas (checkboxes) — requieren re-render parcial NO (solo recalc)
+  cont.querySelectorAll('input[data-zona]').forEach(el => {
+    el.addEventListener('change', e => {
+      const id = e.target.dataset.suc, z = e.target.dataset.zona;
+      const suc = state.sucursales.find(s => s.id === id);
+      if (!suc) return;
+      suc.zonas[z] = e.target.checked;
+      saveState();
       recalc();
     });
   });
 }
 
-// Actualiza las columnas derivadas ($/KG aforado y $/m³) de una fila sin regenerar inputs
-function actualizarCeldaRutaDerivada(z, r) {
-  const ruta = state.rutas[z][r];
-  const veh = state.vehiculos.find(v => v.id === ruta.vehiculoId);
+function actualizarDerivadaRutaSuc(suc, rutaId) {
+  const rd = suc.rutas[rutaId];
+  const veh = vehiculoPorId(rd.vehiculoId);
   const m3 = veh ? veh.m3 : 0;
   const kgAf = m3 * FACTOR_AFORO;
-  const costoPorKgAf = kgAf > 0 ? ruta.costoViaje / kgAf : 0;
-  const costoPorM3 = m3 > 0 ? ruta.costoViaje / m3 : 0;
-  const elKg = document.getElementById(`rutaKgAf-${z}-${r}`);
-  const elM3 = document.getElementById(`rutaM3-${z}-${r}`);
-  if (elKg) elKg.innerHTML = `${fmt(costoPorKgAf)}<div class="sub">por KG aforado</div>`;
-  if (elM3) elM3.innerHTML = `${fmt(costoPorM3)}<div class="sub">por m³</div>`;
+  const umKg = kgAf > 0 ? rd.costoViaje / kgAf : 0;
+  const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
+  const el = document.getElementById(`sucRutaKg-${suc.id}-${rutaId}`);
+  if (el) el.innerHTML = `${fmt(umKg + troncalKg)}<div class="sub">UM+troncal</div>`;
 }
-
-// Actualiza todas las celdas derivadas de rutas (cuando cambia un vehículo)
-function actualizarDerivadasRutas() {
-  for (let z = 0; z < 4; z++) {
-    for (let r = 0; r < 5; r++) {
-      actualizarCeldaRutaDerivada(z, r);
-    }
-  }
+function actualizarTroncalDerivadoSuc(suc) {
+  const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
+  const el = document.getElementById('sucTroncalKg-' + suc.id);
+  if (el) el.textContent = `= ${fmt(troncalKg)} / KG aforado`;
 }
-
-// Actualiza el texto de las opciones de los dropdowns de vehículos
-// (cuando cambia un nombre o m³ de vehículo) sin regenerar la tabla entera
-function actualizarDropdownsVehiculos() {
-  for (let z = 0; z < 4; z++) {
-    for (let r = 0; r < 5; r++) {
-      const sel = document.getElementById(`selVeh-${z}-${r}`);
-      if (!sel) continue;
-      const idSeleccionado = state.rutas[z][r].vehiculoId;
-      sel.innerHTML = state.vehiculos.map(v =>
-        `<option value="${v.id}" ${v.id === idSeleccionado ? 'selected' : ''}>${escaparHTML(v.nombre)} (${v.m3} m³)</option>`
-      ).join('');
-    }
-  }
-}
-
-function renderGlobales() {
-  document.getElementById('volTotal').value = state.volTotal;
-  document.getElementById('margen').value = state.margen;
-  document.getElementById('absorCot').value = state.absorCot;
-  document.getElementById('absorCotVal').textContent = state.absorCot;
-  document.getElementById('volTotal').addEventListener('input', e => {
-    state.volTotal = +e.target.value || 1; saveState(); recalc();
+function actualizarDerivadasSucursales() {
+  state.sucursales.forEach(suc => {
+    actualizarTroncalDerivadoSuc(suc);
+    RUTAS.forEach(r => actualizarDerivadaRutaSuc(suc, r.id));
   });
-  document.getElementById('margen').addEventListener('input', e => {
-    state.margen = +e.target.value || 0; saveState(); recalc();
-  });
-  document.getElementById('absorCot').addEventListener('input', e => {
-    state.absorCot = +e.target.value;
-    document.getElementById('absorCotVal').textContent = state.absorCot;
-    saveState(); recalc();
+}
+function actualizarDropdownsVehiculosSucursales() {
+  state.sucursales.forEach(suc => {
+    RUTAS.forEach(r => {
+      const sel = document.querySelector(`select[data-suc="${suc.id}"][data-ruta="${r.id}"]`);
+      if (!sel) return;
+      const selId = suc.rutas[r.id].vehiculoId;
+      sel.innerHTML = `<option value="">— elegir —</option>` +
+        state.vehiculos.map(v => `<option value="${v.id}" ${v.id===selId?'selected':''}>${escaparHTML(v.nombre)} (${v.m3}m³)</option>`).join('');
+    });
   });
 }
 
-/* ============= FORMATEO ============= */
-function fmt(n) {
-  if (!isFinite(n) || isNaN(n)) return '—';
-  const sign = n < 0 ? '-' : '';
-  return sign + '$ ' + Math.abs(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+function agregarSucursal() {
+  state.sucursales.push(sucursalNueva('Sucursal ' + (state.sucursales.length + 1)));
+  saveState(); renderSucursales(); recalc();
 }
-function totalFijoGeneral() {
-  let t = 0;
-  CAMPOS_FIJOS_GENERALES.forEach(f => t += +state.fijosGenerales[f.key] || 0);
-  return t;
+function eliminarSucursal(id) {
+  if (!confirm('¿Eliminar esta sucursal?')) return;
+  state.sucursales = state.sucursales.filter(s => s.id !== id);
+  saveState(); renderSucursales(); recalc();
 }
 
-/* ============= CÁLCULO ============= */
-/**
- * Para cada (zona, ruta):
- *   capacidad_kg = m3_veh × 250
- *   costo_por_kg_aforado_variable = costo_viaje / capacidad_kg
- *   precio_por_kg_aforado_variable = costo_por_kg / (1 - margen)
- *
- * Para cada peso de la tabla:
- *   fijos_por_guia = (fijos_totales × absor%) / volumen_total
- *   precio_celda = (fijos_por_guia + peso × costo_por_kg_var) / (1 - margen)
- *                = fijos_por_guia / (1-margen) + peso × precio_por_kg_var
- *
- * Para excedente:
- *   precio_por_kg_excedente = precio_por_kg_aforado_variable (sin fijos)
- *
- * Punto equilibrio (para peso de referencia 25 KG):
- *   ganancia_por_guia = precio - costo_variable
- *   guias_para_cubrir_fijos = fijos / ganancia_por_guia
- */
-function recalc() {
-  const totFijo = totalFijoGeneral();
-  const elTotFijo = document.getElementById('totalFijoGeneral');
-  if (elTotFijo) elTotFijo.textContent = fmt(totFijo);
-
-  const margenDec = state.margen / 100;
-  const factorPrecio = (1 - margenDec) > 0 ? 1 / (1 - margenDec) : null;
-  const fijosPorGuia = (totFijo * state.absorCot / 100) / (state.volTotal || 1);
-
-  // Troncal $/KG aforado por zona
-  const palletKg = palletKgAforado();
-  const troncalKgPorZona = [0, 0, 0, 0];
-  for (let z = 0; z < 4; z++) {
-    if (z === 0) { troncalKgPorZona[z] = 0; continue; }
-    troncalKgPorZona[z] = palletKg > 0 ? (state.troncalPorZona[z] || 0) / palletKg : 0;
-  }
-
-  // Matriz [zona][ruta] de info y precios
-  const datos = [];
-  for (let z = 0; z < 4; z++) {
-    const filaZona = [];
-    for (let r = 0; r < 5; r++) {
-      const ruta = state.rutas[z][r];
-      const veh = state.vehiculos.find(v => v.id === ruta.vehiculoId);
-      const m3 = veh ? veh.m3 : 0;
-      const capKg = m3 * FACTOR_AFORO;
-      // UM por KG aforado
-      const umKgVar = capKg > 0 ? ruta.costoViaje / capKg : 0;
-      // Troncal por KG aforado de esta zona
-      const troncalKgVar = troncalKgPorZona[z];
-      // Costo variable total por KG aforado = troncal + UM
-      const costoKgVar = troncalKgVar + umKgVar;
-      const precioKgVar = factorPrecio !== null ? costoKgVar * factorPrecio : 0;
-      const fijosConMargen = factorPrecio !== null ? fijosPorGuia * factorPrecio : 0;
-      // Precios por peso
-      const precios = PESOS_TARIFA.map(p => fijosConMargen + p * precioKgVar);
-      // Excedente: solo variable
-      const precioExcedente = precioKgVar;
-      filaZona.push({
-        vehNombre: veh ? veh.nombre : '—',
-        vehM3: m3,
-        capKg: capKg,
-        costoViaje: ruta.costoViaje,
-        troncalKgVar: troncalKgVar,
-        umKgVar: umKgVar,
-        costoKgVar: costoKgVar,
-        precioKgVar: precioKgVar,
-        precios: precios,
-        precioExcedente: precioExcedente,
-      });
-    }
-    datos.push(filaZona);
-  }
-
-  window._datos = datos;
-  window._fijosPorGuia = fijosPorGuia;
-  window._totalFijo = totFijo;
-  window._troncalKgPorZona = troncalKgPorZona;
-
-  renderTarifariosPorZona(datos);
-  renderEquilibrio(datos);
-}
-
-function renderZonaTabs() {
-  // Función obsoleta — el tarifario ya no tiene tabs por zona
-  const cont = document.getElementById('zonaTabs');
-  if (cont) cont.innerHTML = '';
-}
-
-function cambiarZonaTab(z) {
-  zonaActivaTab = z;
-}
-
-function renderTarifariosPorZona(datos) {
-  // Función nueva: una sola tabla 4 zonas × 19 filas, ponderada por mix
+/* ============= RENDER: TARIFARIO (editable) ============= */
+function renderTarifario() {
   const tbl = document.getElementById('tablaTarifario');
   if (!tbl) return;
-
-  // Calcular precios ponderados por zona
-  const mix = state.mixRutas;
-  const totMix = totalMixRutas();
-  // Si la suma no es 100, igualmente promediamos con los % cargados (pueden ser >0)
-  const sumW = totMix > 0 ? totMix : 1;
-
-  // Para cada zona, calcular precios ponderados por peso + excedente
-  const preciosZonaPorPeso = []; // [zona][peso]
-  const preciosZonaExcedente = []; // [zona]
-  for (let z = 0; z < 4; z++) {
-    const filaPesos = PESOS_TARIFA.map((_, pi) => {
-      let acc = 0;
-      for (let r = 0; r < 5; r++) {
-        const w = (+mix[RUTAS[r].id] || 0) / sumW;
-        acc += datos[z][r].precios[pi] * w;
-      }
-      return acc;
-    });
-    preciosZonaPorPeso.push(filaPesos);
-    let accEx = 0;
-    for (let r = 0; r < 5; r++) {
-      const w = (+mix[RUTAS[r].id] || 0) / sumW;
-      accEx += datos[z][r].precioExcedente * w;
-    }
-    preciosZonaExcedente.push(accEx);
-  }
-  window._preciosZonaPorPeso = preciosZonaPorPeso;
-  window._preciosZonaExcedente = preciosZonaExcedente;
-
   let html = `<thead><tr><th style="text-align:left;">Peso aforado</th>`;
-  for (let z = 0; z < 4; z++) {
-    html += `<th class="ruta-header">${ZONAS[z]}</th>`;
-  }
+  ZONAS.forEach((z, zi) => {
+    const sucsZona = state.sucursales.filter(s => s.zonas[ZONAS_KEY[zi]]);
+    html += `<th class="ruta-header">${z}<br><span style="font-size:9px; opacity:0.7; font-weight:400;">${sucsZona.length} suc.</span></th>`;
+  });
   html += `</tr></thead><tbody>`;
-  // Filas pesos
-  PESOS_TARIFA.forEach((peso, pi) => {
+
+  PESOS_TARIFA.forEach(peso => {
     html += `<tr><td class="range-label">${peso} KG</td>`;
-    for (let z = 0; z < 4; z++) {
-      html += `<td class="price">${fmt(preciosZonaPorPeso[z][pi])}</td>`;
-    }
+    ZONAS_KEY.forEach((zk, zi) => {
+      const sugerido = precioSugeridoZona(zk, peso);
+      const manual = esManual(zk, peso);
+      const valor = precioFinalZona(zk, peso);
+      if (sugerido === null && !manual) {
+        html += `<td class="price sin-cobertura">—</td>`;
+      } else {
+        const cls = manual ? 'price celda-manual' : 'price';
+        const valNum = valor !== null ? Math.round(valor) : 0;
+        html += `<td class="${cls}">
+          <input type="number" class="tarifa-input" data-zk="${zk}" data-peso="${peso}" value="${valNum}" min="0" step="100">
+          ${manual ? `<span class="manual-dot" title="Editado manualmente" onclick="restaurarCelda('${zk}',${peso})">●</span>` : ''}
+        </td>`;
+      }
+    });
     html += `</tr>`;
   });
-  // Excedente
-  html += `<tr class="excedente-row"><td class="range-label">KG excedente</td>`;
-  for (let z = 0; z < 4; z++) {
-    html += `<td class="price">${fmt(preciosZonaExcedente[z])} <span style="font-size:9px; color:#999;">/ kg</span></td>`;
-  }
-  html += `</tr></tbody>`;
+  html += `</tbody>`;
   tbl.innerHTML = html;
+
+  tbl.querySelectorAll('input.tarifa-input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const zk = e.target.dataset.zk, peso = +e.target.dataset.peso;
+      state.tarifarioManual[zk + '_' + peso] = +e.target.value || 0;
+      saveState();
+      // No re-render completo (mantener foco) — solo actualizar equilibrio y badge
+      marcarCeldaManual(e.target);
+      renderEquilibrio();
+    });
+  });
+}
+function marcarCeldaManual(input) {
+  const td = input.closest('td');
+  if (td && !td.classList.contains('celda-manual')) {
+    td.classList.add('celda-manual');
+    const dot = document.createElement('span');
+    dot.className = 'manual-dot';
+    dot.title = 'Editado manualmente';
+    dot.textContent = '●';
+    dot.onclick = () => restaurarCelda(input.dataset.zk, +input.dataset.peso);
+    td.appendChild(dot);
+  }
+}
+function restaurarCelda(zk, peso) {
+  delete state.tarifarioManual[zk + '_' + peso];
+  saveState();
+  renderTarifario();
+  renderEquilibrio();
+  toast('Celda restaurada al valor sugerido');
+}
+function restaurarTodoTarifario() {
+  if (Object.keys(state.tarifarioManual).length === 0) { toast('No hay celdas editadas', true); return; }
+  if (!confirm('¿Restaurar TODAS las celdas al valor sugerido? Se perderán las ediciones manuales.')) return;
+  state.tarifarioManual = {};
+  saveState();
+  renderTarifario();
+  renderEquilibrio();
+  toast('Tarifario restaurado a valores sugeridos');
 }
 
-function renderEquilibrio(datos) {
+/* ============= RENDER: EQUILIBRIO ============= */
+function renderEquilibrio() {
   const tbl = document.getElementById('tablaEquilibrio');
-  const totFijo = totalFijoGeneral();
-  if (totFijo <= 0) { tbl.innerHTML = ''; return; }
+  if (!tbl) return;
+  if (state.sucursales.length === 0) { tbl.innerHTML = '<tbody><tr><td style="padding:20px; text-align:center; color:#888;">No hay sucursales cargadas.</td></tr></tbody>'; return; }
 
-  // Para el equilibrio: precio ponderado a 25 KG - costo variable ponderado a 25 KG
-  const PESO_REF = 25;
-  const peIdx = PESOS_TARIFA.indexOf(PESO_REF);
-  const mix = state.mixRutas;
-  const totMix = totalMixRutas();
-  const sumW = totMix > 0 ? totMix : 1;
+  let html = `<thead><tr>
+    <th style="text-align:left;">Sucursal</th>
+    <th style="text-align:left;">Zonas</th>
+    <th style="text-align:right;">Fijo mensual</th>
+    <th style="text-align:right;">Cobra/guía</th>
+    <th style="text-align:right;">Costo var/guía</th>
+    <th style="text-align:right;">Contribución</th>
+    <th style="text-align:right;">Equilibrio</th>
+  </tr></thead><tbody>`;
 
-  let html = `<thead><tr><th style="text-align:left;">Zona</th>`;
-  html += `<th class="ruta-header">Guías necesarias (25 KG aforados)</th>`;
-  html += `</tr></thead><tbody>`;
-  for (let z = 0; z < 4; z++) {
-    // Precio ponderado a 25 KG
-    let precio25 = 0;
-    let costoVar25 = 0;
-    for (let r = 0; r < 5; r++) {
-      const w = (+mix[RUTAS[r].id] || 0) / sumW;
-      precio25 += datos[z][r].precios[peIdx] * w;
-      costoVar25 += (PESO_REF * datos[z][r].costoKgVar) * w;
-    }
-    const contrib = precio25 - costoVar25;
-    let cell;
-    if (contrib > 0) {
-      const g = Math.ceil(totFijo / contrib);
-      cell = `<td class="price">${g.toLocaleString('es-AR')}</td>`;
+  state.sucursales.forEach(suc => {
+    const eq = equilibrioSucursal(suc);
+    const zonasTxt = eq.zonasAt.length > 0 ? eq.zonasAt.map(z => z.replace('Z','Z')).join(', ') : '—';
+    let equilibrioCell;
+    if (eq.guias === null) {
+      equilibrioCell = `<span class="eq-neg">no rentable</span>`;
     } else {
-      cell = `<td class="infinity">— sin contribución</td>`;
+      equilibrioCell = `<strong>${eq.guias.toLocaleString('es-AR')}</strong> guías/mes`;
     }
-    html += `<tr><td class="range-label">${ZONAS[z]}</td>${cell}</tr>`;
-  }
+    html += `<tr>
+      <td class="range-label">${escaparHTML(suc.nombre)}</td>
+      <td style="font-size:11px; color:#666;">${zonasTxt}</td>
+      <td class="price">${fmt(eq.fijo || totalFijosSucursal(suc))}</td>
+      <td class="price">${fmt(eq.precioCobra)}</td>
+      <td class="price">${fmt(eq.cv)}</td>
+      <td class="price ${eq.contrib > 0 ? 'eq-pos' : 'eq-neg'}">${fmt(eq.contrib)}</td>
+      <td class="price">${equilibrioCell}</td>
+    </tr>`;
+  });
   html += `</tbody>`;
   tbl.innerHTML = html;
 }
 
-/* ============= MODALES ============= */
-function iniciarExportPDF() {
-  document.getElementById('modalClientName').value = 'Tarifario ' + fechaCortaArgentina();
-  document.getElementById('modalPDF').classList.add('active');
-  setTimeout(() => { const i = document.getElementById('modalClientName'); i.focus(); i.select(); }, 100);
+/* ============= RECALC ============= */
+function recalc() {
+  renderTarifario();
+  renderEquilibrio();
 }
-function cerrarModal() { document.getElementById('modalPDF').classList.remove('active'); }
-function confirmarExportPDF() {
-  const t = document.getElementById('modalClientName').value.trim() || ('Tarifario ' + fechaCortaArgentina());
-  cerrarModal();
-  generarPDF(t);
-  archivarTarifario(t);
-  exportarExcel(t);
-  renderHistorial();
-  toast('Tarifario guardado al historial · PDF y Excel descargados');
-}
-function iniciarGuardarHistorial() {
-  document.getElementById('modalGuardarClientName').value = 'Tarifario ' + fechaCortaArgentina();
-  document.getElementById('modalGuardar').classList.add('active');
-  setTimeout(() => { const i = document.getElementById('modalGuardarClientName'); i.focus(); i.select(); }, 100);
-}
-function cerrarModalGuardar() { document.getElementById('modalGuardar').classList.remove('active'); }
-function confirmarGuardarHistorial() {
-  const t = document.getElementById('modalGuardarClientName').value.trim() || ('Tarifario ' + fechaCortaArgentina());
-  cerrarModalGuardar();
-  archivarTarifario(t);
-  exportarExcel(t);
-  renderHistorial();
-  toast('Tarifario archivado · Excel descargado');
-}
-document.addEventListener('click', e => {
-  if (e.target.id === 'modalPDF') cerrarModal();
-  if (e.target.id === 'modalGuardar') cerrarModalGuardar();
-  if (e.target.id === 'modalDetalle') cerrarModalDetalle();
-});
-document.addEventListener('keydown', e => {
-  const mPDF = document.getElementById('modalPDF');
-  const mG = document.getElementById('modalGuardar');
-  const mD = document.getElementById('modalDetalle');
-  if (mPDF && mPDF.classList.contains('active')) {
-    if (e.key === 'Escape') cerrarModal();
-    if (e.key === 'Enter') confirmarExportPDF();
-  } else if (mG && mG.classList.contains('active')) {
-    if (e.key === 'Escape') cerrarModalGuardar();
-    if (e.key === 'Enter') confirmarGuardarHistorial();
-  } else if (mD && mD.classList.contains('active')) {
-    if (e.key === 'Escape') cerrarModalDetalle();
-  }
-});
 
 /* ============= FECHAS ============= */
 function fechaArgentina() {
@@ -754,219 +624,129 @@ function fechaCortaArgentina() {
 function fmtFechaHumana(iso) {
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   const d = new Date(iso);
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm = String(d.getMinutes()).padStart(2,'0');
-  return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`;
+  return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-/* ============= PDF ============= */
-function generarPDF(titulo) {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = 210;
-  const pageH = 297;
-  const margin = 15;
-
-  // Logo + fecha
-  const logoX = margin + 4;
-  const logoY = margin + 6;
-  doc.setFillColor(43, 128, 200);
-  doc.circle(logoX, logoY, 2.5, 'F');
-  doc.setFillColor(43, 212, 217);
-  doc.circle(logoX + 0.6, logoY + 0.6, 1.4, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(13, 44, 102);
-  doc.text('SOUTHPOST', logoX + 5, logoY + 1.5);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(120, 120, 120);
-  doc.text('FECHA DE EMISIÓN', pageW - margin, margin + 4, { align: 'right' });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(13, 44, 102);
-  doc.text(fechaArgentina(), pageW - margin, margin + 9, { align: 'right' });
-
-  doc.setDrawColor(10, 22, 40);
-  doc.setLineWidth(0.6);
-  doc.line(margin, margin + 14, pageW - margin, margin + 14);
-
-  // Título
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(30, 75, 168);
-  doc.text('TARIFARIO VIGENTE', pageW / 2, margin + 22, { align: 'center' });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(13, 44, 102);
-  doc.text(titulo, pageW / 2, margin + 31, { align: 'center' });
-
-  // Tabla principal
-  const preciosZ = window._preciosZonaPorPeso || [[], [], [], []];
-  const preciosEx = window._preciosZonaExcedente || [0, 0, 0, 0];
-  const headers = [['Peso aforado', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
-  const body = [];
-  PESOS_TARIFA.forEach((peso, pi) => {
-    body.push([`${peso} KG`,
-      fmt(preciosZ[0][pi]),
-      fmt(preciosZ[1][pi]),
-      fmt(preciosZ[2][pi]),
-      fmt(preciosZ[3][pi]),
-    ]);
-  });
-  body.push(['KG excedente',
-    fmt(preciosEx[0]) + ' /kg',
-    fmt(preciosEx[1]) + ' /kg',
-    fmt(preciosEx[2]) + ' /kg',
-    fmt(preciosEx[3]) + ' /kg',
-  ]);
-
-  doc.autoTable({
-    head: headers, body: body, startY: margin + 38, theme: 'grid', margin: { left: margin, right: margin },
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, lineColor: [197, 210, 227], lineWidth: 0.1, textColor: [13, 44, 102] },
-    headStyles: { fillColor: [10, 22, 40], textColor: [255, 255, 255], fontSize: 9, fontStyle: 'bold', halign: 'right', cellPadding: 2.5 },
-    columnStyles: {
-      0: { halign: 'left', cellWidth: 38, fillColor: [244, 247, 251], fontStyle: 'italic', textColor: [10, 22, 40], fontSize: 10 },
-      1: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-      2: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-      3: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-      4: { halign: 'right', cellWidth: 'auto', fontStyle: 'bold' },
-    },
-    alternateRowStyles: { fillColor: [246, 249, 253] },
-    didParseCell: function (data) {
-      if (data.section === 'head' && data.column.index >= 1) {
-        data.cell.styles.fillColor = [13, 44, 102];
-      }
-      // Última fila (excedente)
-      if (data.section === 'body' && data.row.index === body.length - 1) {
-        data.cell.styles.fillColor = [228, 247, 248];
-        data.cell.styles.fontStyle = 'bold';
-        if (data.column.index === 0) data.cell.styles.textColor = [10, 165, 170];
-      }
-    },
-  });
-
-  const finalY = doc.lastAutoTable.finalY;
-
-  // Aviso
-  const warnY = finalY + 8;
-  doc.setFillColor(244, 247, 251);
-  doc.rect(margin, warnY, pageW - 2 * margin, 11, 'F');
-  doc.setFillColor(43, 212, 217);
-  doc.rect(margin, warnY, 1.2, 11, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(10, 165, 170);
-  doc.text('AVISO', margin + 4, warnY + 4);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(9);
-  doc.setTextColor(13, 44, 102);
-  doc.text('Tarifario de uso interno · KG aforado: max(peso real, m³ × 250) · No para envío comercial', margin + 4, warnY + 8.5);
-
-  // Footer
-  const footerY = pageH - margin + 2;
-  doc.setDrawColor(197, 210, 227);
-  doc.setLineWidth(0.2);
-  doc.line(margin, footerY - 4, pageW - margin, footerY - 4);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(140, 140, 140);
-  doc.text('SOUTHPOST · Calculadora de tarifario v10', margin, footerY);
-  doc.text('Página 1 de 1', pageW - margin, footerY, { align: 'right' });
-
-  const fechaArchivo = new Date().toISOString().slice(0, 10);
-  const safeName = titulo.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
-  doc.save(`Tarifario_${safeName || 'general'}_${fechaArchivo}.pdf`);
+/* ============= MODALES PDF/GUARDAR ============= */
+function iniciarExportPDF() {
+  document.getElementById('modalClientName').value = 'Tarifario ' + fechaCortaArgentina();
+  document.getElementById('modalPDF').classList.add('active');
+  setTimeout(() => { const i = document.getElementById('modalClientName'); if (i) { i.focus(); i.select(); } }, 100);
 }
+function cerrarModal() { document.getElementById('modalPDF').classList.remove('active'); }
+function confirmarExportPDF() {
+  const t = document.getElementById('modalClientName').value.trim() || ('Tarifario ' + fechaCortaArgentina());
+  cerrarModal();
+  generarPDF(t);
+  archivarTarifario(t);
+  exportarExcel(t);
+  renderHistorial();
+  toast('Tarifario guardado al historial · PDF y Excel descargados');
+}
+function iniciarGuardarHistorial() {
+  document.getElementById('modalGuardarClientName').value = 'Tarifario ' + fechaCortaArgentina();
+  document.getElementById('modalGuardar').classList.add('active');
+  setTimeout(() => { const i = document.getElementById('modalGuardarClientName'); if (i) { i.focus(); i.select(); } }, 100);
+}
+function cerrarModalGuardar() { document.getElementById('modalGuardar').classList.remove('active'); }
+function confirmarGuardarHistorial() {
+  const t = document.getElementById('modalGuardarClientName').value.trim() || ('Tarifario ' + fechaCortaArgentina());
+  cerrarModalGuardar();
+  archivarTarifario(t);
+  exportarExcel(t);
+  renderHistorial();
+  toast('Tarifario archivado · Excel descargado');
+}
+document.addEventListener('click', e => {
+  if (e.target.id === 'modalPDF') cerrarModal();
+  if (e.target.id === 'modalGuardar') cerrarModalGuardar();
+  if (e.target.id === 'modalDetalle') cerrarModalDetalle();
+});
+document.addEventListener('keydown', e => {
+  const mPDF = document.getElementById('modalPDF'), mG = document.getElementById('modalGuardar'), mD = document.getElementById('modalDetalle');
+  if (mPDF && mPDF.classList.contains('active')) { if (e.key === 'Escape') cerrarModal(); if (e.key === 'Enter') confirmarExportPDF(); }
+  else if (mG && mG.classList.contains('active')) { if (e.key === 'Escape') cerrarModalGuardar(); if (e.key === 'Enter') confirmarGuardarHistorial(); }
+  else if (mD && mD.classList.contains('active')) { if (e.key === 'Escape') cerrarModalDetalle(); }
+});
 
-/* ============= HISTORIAL ============= */
+/* ============= SNAPSHOT / HISTORIAL ============= */
+function snapshotDatos() {
+  // Tarifario final por zona y peso + equilibrios
+  const tarifa = {};
+  ZONAS_KEY.forEach(zk => {
+    tarifa[zk] = {};
+    PESOS_TARIFA.forEach(p => { tarifa[zk][p] = precioFinalZona(zk, p); });
+  });
+  const equilibrios = state.sucursales.map(s => {
+    const eq = equilibrioSucursal(s);
+    return { nombre: s.nombre, fijo: totalFijosSucursal(s), zonas: eq.zonasAt, precioCobra: eq.precioCobra, cv: eq.cv, contrib: eq.contrib, guias: eq.guias };
+  });
+  return { tarifa, equilibrios };
+}
 function leerHistorial() {
-  try { const s = localStorage.getItem(HIST_KEY); if (s) return JSON.parse(s); }
-  catch(e) {}
+  try { const s = localStorage.getItem(HIST_KEY); if (s) return JSON.parse(s); } catch(e) {}
   return [];
 }
 function guardarHistorialEnDisco(hist) {
-  try { localStorage.setItem(HIST_KEY, JSON.stringify(hist)); }
-  catch(e) { toast('No se pudo guardar al historial: ' + e.message, true); }
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(hist)); } catch(e) { toast('No se pudo guardar al historial', true); }
 }
 function crearSnapshot(titulo) {
   return {
     id: 'tar_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    titulo: titulo,
-    fecha: new Date().toISOString(),
+    titulo, fecha: new Date().toISOString(),
     estado: JSON.parse(JSON.stringify(state)),
-    datos: JSON.parse(JSON.stringify(window._datos || [])),
-    totalFijoGeneral: totalFijoGeneral(),
-    fijosPorGuia: window._fijosPorGuia || 0,
+    datos: snapshotDatos(),
+    totalFijo: totalFijosGlobal(),
   };
 }
 function archivarTarifario(titulo) {
-  const snap = crearSnapshot(titulo);
   let hist = leerHistorial();
-  hist.unshift(snap);
+  hist.unshift(crearSnapshot(titulo));
   if (hist.length > HIST_MAX) hist = hist.slice(0, HIST_MAX);
   guardarHistorialEnDisco(hist);
 }
 function eliminarTarifario(id) {
-  if (!confirm('¿Eliminar este tarifario del historial? Esta acción no se puede deshacer.')) return;
-  let hist = leerHistorial();
-  hist = hist.filter(c => c.id !== id);
-  guardarHistorialEnDisco(hist);
+  if (!confirm('¿Eliminar este tarifario del historial?')) return;
+  guardarHistorialEnDisco(leerHistorial().filter(c => c.id !== id));
   renderHistorial();
   toast('Tarifario eliminado');
 }
 function recargarTarifario(id) {
-  if (!confirm('¿Reemplazar la configuración actual con los datos de este tarifario archivado?')) return;
-  const hist = leerHistorial();
-  const cot = hist.find(c => c.id === id);
+  if (!confirm('¿Reemplazar la configuración actual con este tarifario archivado?')) return;
+  const cot = leerHistorial().find(c => c.id === id);
   if (!cot) return;
   state = JSON.parse(JSON.stringify(cot.estado));
   saveState();
-  renderGlobales();
-  renderFijosGenerales();
-  renderVehiculos();
-  renderTroncal();
-  renderZonasRutas();
-  renderMixRutas();
-  recalc();
+  renderGlobales(); renderVehiculos(); renderMixRutas(); renderSucursales(); recalc();
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  toast('Tarifario re-cargado en la calculadora');
+  toast('Tarifario re-cargado');
 }
 function descargarExcelDe(id) {
-  const hist = leerHistorial();
-  const cot = hist.find(c => c.id === id);
-  if (!cot) return;
-  exportarExcelDesdeSnapshot(cot);
+  const cot = leerHistorial().find(c => c.id === id);
+  if (cot) exportarExcelDesdeSnapshot(cot);
 }
 function inicialesTitulo(t) {
-  const tokens = (t||'').trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return '?';
-  if (tokens.length === 1) return tokens[0].slice(0,2).toUpperCase();
-  return (tokens[0][0] + tokens[1][0]).toUpperCase();
-}
-function escaparHTML(s) {
-  return String(s||'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const tk = (t||'').trim().split(/\s+/).filter(Boolean);
+  if (tk.length === 0) return '?';
+  if (tk.length === 1) return tk[0].slice(0,2).toUpperCase();
+  return (tk[0][0] + tk[1][0]).toUpperCase();
 }
 function renderHistorial() {
   const hist = leerHistorial();
-  const empty = document.getElementById('emptyHistorial');
-  const list = document.getElementById('historialList');
+  const empty = document.getElementById('emptyHistorial'), list = document.getElementById('historialList');
   if (!list || !empty) return;
   if (hist.length === 0) { empty.style.display = 'block'; list.innerHTML = ''; return; }
   empty.style.display = 'none';
   let html = '';
   hist.forEach(cot => {
-    const abs = cot.estado.absorCot || 0;
-    const fijos = cot.totalFijoGeneral || 0;
     html += `<div class="hist-item">
       <div class="hist-icon">${inicialesTitulo(cot.titulo)}</div>
       <div class="hist-info">
         <div class="hist-cliente">${escaparHTML(cot.titulo)}</div>
         <div class="hist-meta">
           <span>${fmtFechaHumana(cot.fecha)}</span>
-          <span>fijos <strong>${fmt(fijos)}</strong></span>
-          <span>absorción <strong>${abs}%</strong></span>
+          <span>fijo total <strong>${fmt(cot.totalFijo||0)}</strong></span>
+          <span><strong>${(cot.estado.sucursales||[]).length}</strong> sucursales</span>
           <span>margen <strong>${cot.estado.margen||0}%</strong></span>
         </div>
       </div>
@@ -980,192 +760,37 @@ function renderHistorial() {
   });
   list.innerHTML = html;
 }
-
-/* ============= DETALLE MODAL ============= */
 function verDetalleTarifario(id) {
-  const hist = leerHistorial();
-  const cot = hist.find(c => c.id === id);
+  const cot = leerHistorial().find(c => c.id === id);
   if (!cot) return;
   document.getElementById('detalleTitulo').textContent = cot.titulo;
   document.getElementById('detalleFecha').textContent = 'Archivado el ' + fmtFechaHumana(cot.fecha);
-  const e = cot.estado;
+  const e = cot.estado, d = cot.datos;
   let html = '';
-  // Parámetros
   html += `<div class="detalle-block"><h4>Parámetros</h4><table class="detalle-table"><tbody>
     <tr><td>Volumen mensual</td><td>${(e.volTotal||0).toLocaleString('es-AR')}</td></tr>
-    <tr><td>Margen objetivo</td><td>${e.margen||0}%</td></tr>
-    <tr><td>% absorción</td><td>${e.absorCot||0}%</td></tr>
-    <tr><td>Total fijo mensual</td><td>${fmt(cot.totalFijoGeneral||0)}</td></tr>
-    <tr><td>Fijos por guía (con absorción)</td><td>${fmt(cot.fijosPorGuia||0)}</td></tr>
+    <tr><td>Margen</td><td>${e.margen||0}%</td></tr>
+    <tr><td>Fijo total (sucursales)</td><td>${fmt(cot.totalFijo||0)}</td></tr>
+    <tr><td>Sucursales</td><td>${(e.sucursales||[]).length}</td></tr>
   </tbody></table></div>`;
-  // Vehículos
-  html += `<div class="detalle-block"><h4>Vehículos</h4><table class="detalle-table"><thead><tr><th>Nombre</th><th>m³</th><th>KG aforados</th></tr></thead><tbody>`;
-  (e.vehiculos||[]).forEach(v => {
-    html += `<tr><td>${escaparHTML(v.nombre)}</td><td>${v.m3} m³</td><td>${(v.m3 * FACTOR_AFORO).toLocaleString('es-AR')} KG</td></tr>`;
+  // Tarifario
+  html += `<div class="detalle-block"><h4>Tarifario sugerido</h4><table class="detalle-table"><thead><tr><th>Peso</th><th>Z.I</th><th>Z.II</th><th>Z.III</th><th>Z.IV</th></tr></thead><tbody>`;
+  PESOS_TARIFA.forEach(p => {
+    html += `<tr><td>${p} KG</td>`;
+    ZONAS_KEY.forEach(zk => { const v = d.tarifa[zk] ? d.tarifa[zk][p] : null; html += `<td>${v !== null && v !== undefined ? fmt(v) : '—'}</td>`; });
+    html += `</tr>`;
   });
   html += `</tbody></table></div>`;
-  // Troncal
-  const palletM3Detalle = e.pallet ? (e.pallet.largo * e.pallet.ancho * e.pallet.alto) : 1.8;
-  const palletKgDetalle = palletM3Detalle * FACTOR_AFORO;
-  html += `<div class="detalle-block"><h4>Costos troncales</h4>`;
-  html += `<p style="font-size:11px; color:#666; margin:0 0 8px 0;">Pallet: ${e.pallet ? e.pallet.largo : 1} × ${e.pallet ? e.pallet.ancho : 1.2} × ${e.pallet ? e.pallet.alto : 1.5} m = ${palletM3Detalle.toFixed(2)} m³ = ${palletKgDetalle.toFixed(0)} KG aforados</p>`;
-  html += `<table class="detalle-table"><thead><tr><th>Destino</th><th>Costo por pallet</th><th>$ / KG aforado</th></tr></thead><tbody>`;
-  for (let z = 1; z < 4; z++) {
-    const c = (e.troncalPorZona && e.troncalPorZona[z]) || 0;
-    const kgAf = palletKgDetalle > 0 ? c / palletKgDetalle : 0;
-    html += `<tr><td>${ZONAS[z]}</td><td>${fmt(c)}</td><td>${fmt(kgAf)}</td></tr>`;
-  }
+  // Equilibrios
+  html += `<div class="detalle-block"><h4>Punto de equilibrio por sucursal</h4><table class="detalle-table"><thead><tr><th>Sucursal</th><th>Fijo</th><th>Cobra</th><th>Cv</th><th>Equilibrio</th></tr></thead><tbody>`;
+  (d.equilibrios||[]).forEach(eq => {
+    html += `<tr><td>${escaparHTML(eq.nombre)}</td><td>${fmt(eq.fijo)}</td><td>${fmt(eq.precioCobra)}</td><td>${fmt(eq.cv)}</td><td>${eq.guias !== null ? eq.guias.toLocaleString('es-AR')+' g/mes' : 'no rentable'}</td></tr>`;
+  });
   html += `</tbody></table></div>`;
-  // Rutas por zona
-  for (let z = 0; z < 4; z++) {
-    html += `<div class="detalle-block"><h4>${ZONAS[z]} — Costos por ruta</h4><table class="detalle-table"><thead><tr><th>Ruta</th><th>Vehículo</th><th>Costo viaje</th><th>$/KG af.</th></tr></thead><tbody>`;
-    for (let r = 0; r < 5; r++) {
-      const ru = e.rutas[z][r];
-      const veh = (e.vehiculos||[]).find(v => v.id === ru.vehiculoId);
-      const d = (cot.datos && cot.datos[z]) ? cot.datos[z][r] : null;
-      html += `<tr><td>${RUTAS[r].label} (${RUTAS[r].km})</td><td>${veh ? escaparHTML(veh.nombre) : '—'}</td><td>${fmt(ru.costoViaje)}</td><td>${d ? fmt(d.precioKgVar) : '—'}</td></tr>`;
-    }
-    html += `</tbody></table></div>`;
-  }
   document.getElementById('detalleContent').innerHTML = html;
   document.getElementById('modalDetalle').classList.add('active');
 }
 function cerrarModalDetalle() { document.getElementById('modalDetalle').classList.remove('active'); }
-
-/* ============= EXCEL ============= */
-function exportarExcel(titulo) {
-  const snap = crearSnapshot(titulo);
-  exportarExcelDesdeSnapshot(snap);
-}
-function exportarExcelDesdeSnapshot(cot) {
-  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargada', true); return; }
-  const wb = XLSX.utils.book_new();
-  const e = cot.estado;
-  const datos = cot.datos || [];
-
-  // Hoja 1: Resumen
-  const fechaArr = new Date(cot.fecha).toLocaleString('es-AR');
-  const ws1 = XLSX.utils.aoa_to_sheet([
-    ['SOUTHPOST · Tarifario archivado (modelo aforo)'],
-    [],
-    ['Título', cot.titulo],
-    ['Fecha y hora', fechaArr],
-    [],
-    ['Factor de aforo', `1 m³ = ${FACTOR_AFORO} KG`],
-    ['Volumen mensual', e.volTotal],
-    ['Margen objetivo', (e.margen||0) + '%'],
-    ['% absorción', (e.absorCot||0) + '%'],
-    ['Total fijo mensual', cot.totalFijoGeneral||0],
-    ['Fijos por guía', cot.fijosPorGuia||0],
-  ]);
-  ws1['!cols'] = [{wch: 30}, {wch: 22}];
-  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
-
-  // Hoja 2: Fijos
-  const fdata = [['Concepto', 'Mensual']];
-  CAMPOS_FIJOS_GENERALES.forEach(f => fdata.push([f.label, +(e.fijosGenerales[f.key])||0]));
-  fdata.push(['TOTAL', cot.totalFijoGeneral||0]);
-  const ws2 = XLSX.utils.aoa_to_sheet(fdata);
-  ws2['!cols'] = [{wch: 35}, {wch: 16}];
-  XLSX.utils.book_append_sheet(wb, ws2, 'Costos fijos');
-
-  // Hoja 3: Vehículos
-  const vdata = [['Nombre', 'm³', 'KG aforados']];
-  (e.vehiculos||[]).forEach(v => vdata.push([v.nombre, v.m3, v.m3 * FACTOR_AFORO]));
-  const ws3 = XLSX.utils.aoa_to_sheet(vdata);
-  ws3['!cols'] = [{wch: 28}, {wch: 10}, {wch: 14}];
-  XLSX.utils.book_append_sheet(wb, ws3, 'Vehículos');
-
-  // Hoja 4: Costos troncales
-  const m3Pallet = (e.pallet ? e.pallet.largo * e.pallet.ancho * e.pallet.alto : 1.8);
-  const kgPallet = m3Pallet * FACTOR_AFORO;
-  const trncdata = [
-    ['Pallet estándar:', `${e.pallet ? e.pallet.largo : 1} × ${e.pallet ? e.pallet.ancho : 1.2} × ${e.pallet ? e.pallet.alto : 1.5} m = ${m3Pallet.toFixed(2)} m³ = ${kgPallet.toFixed(0)} KG aforados`],
-    [],
-    ['Destino', 'Costo por pallet', '$ / KG aforado', '$ / m³'],
-  ];
-  for (let z = 1; z < 4; z++) {
-    const c = (e.troncalPorZona && e.troncalPorZona[z]) || 0;
-    const kgAf = kgPallet > 0 ? c / kgPallet : 0;
-    const m3 = m3Pallet > 0 ? c / m3Pallet : 0;
-    trncdata.push([ZONAS[z], c, +(kgAf.toFixed(2)), +(m3.toFixed(2))]);
-  }
-  const ws4tr = XLSX.utils.aoa_to_sheet(trncdata);
-  ws4tr['!cols'] = [{wch: 20}, {wch: 18}, {wch: 18}, {wch: 18}];
-  XLSX.utils.book_append_sheet(wb, ws4tr, 'Costos troncales');
-
-  // Hoja 5: Costos por ruta (UM)
-  const rdata = [['Zona', 'Ruta', 'KM', 'Vehículo', 'm³', 'Costo viaje', 'KG aforado', '$ / KG aforado (UM)', '$ / m³']];
-  for (let z = 0; z < 4; z++) {
-    for (let r = 0; r < 5; r++) {
-      const ru = e.rutas[z][r];
-      const veh = (e.vehiculos||[]).find(v => v.id === ru.vehiculoId);
-      const m3 = veh ? veh.m3 : 0;
-      const capKg = m3 * FACTOR_AFORO;
-      const costoKg = capKg > 0 ? ru.costoViaje / capKg : 0;
-      const costoM3 = m3 > 0 ? ru.costoViaje / m3 : 0;
-      rdata.push([ZONAS[z], RUTAS[r].label, RUTAS[r].km, veh ? veh.nombre : '—', m3, ru.costoViaje, capKg, +(costoKg.toFixed(2)), +(costoM3.toFixed(2))]);
-    }
-  }
-  const ws4 = XLSX.utils.aoa_to_sheet(rdata);
-  ws4['!cols'] = [{wch: 10}, {wch: 10}, {wch: 14}, {wch: 22}, {wch: 8}, {wch: 14}, {wch: 14}, {wch: 16}, {wch: 14}];
-  XLSX.utils.book_append_sheet(wb, ws4, 'Última milla');
-
-  // Hoja 6: Mix de rutas
-  const mix = e.mixRutas || { A:50, B:25, C:15, D:7, E:3 };
-  const totMixSnap = (mix.A||0)+(mix.B||0)+(mix.C||0)+(mix.D||0)+(mix.E||0);
-  const mixData = [
-    ['Mix de rutas (% del volumen total)'],
-    [],
-    ['Ruta', 'Rango km', '%'],
-    ['Ruta A', '0 - 50 km', mix.A || 0],
-    ['Ruta B', '51 - 100 km', mix.B || 0],
-    ['Ruta C', '101 - 150 km', mix.C || 0],
-    ['Ruta D', '151 - 200 km', mix.D || 0],
-    ['Ruta E', '+201 km', mix.E || 0],
-    ['TOTAL', '', totMixSnap],
-  ];
-  const ws5mix = XLSX.utils.aoa_to_sheet(mixData);
-  ws5mix['!cols'] = [{wch: 14}, {wch: 16}, {wch: 10}];
-  XLSX.utils.book_append_sheet(wb, ws5mix, 'Mix de rutas');
-
-  // Hoja 7: Tarifario sugerido (precio único por zona, ponderado)
-  // Recalcular ponderados para el snapshot
-  const sumW = totMixSnap > 0 ? totMixSnap : 1;
-  const tdata = [['Peso aforado', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
-  PESOS_TARIFA.forEach((peso, pi) => {
-    const row = [`${peso} KG`];
-    for (let z = 0; z < 4; z++) {
-      let acc = 0;
-      for (let r = 0; r < 5; r++) {
-        const w = (+mix[RUTAS[r].id] || 0) / sumW;
-        const dz = datos[z] || [];
-        acc += (dz[r] ? dz[r].precios[pi] : 0) * w;
-      }
-      row.push(+(acc.toFixed(2)));
-    }
-    tdata.push(row);
-  });
-  // Excedente
-  const rowEx = ['KG excedente ($/kg)'];
-  for (let z = 0; z < 4; z++) {
-    let acc = 0;
-    for (let r = 0; r < 5; r++) {
-      const w = (+mix[RUTAS[r].id] || 0) / sumW;
-      const dz = datos[z] || [];
-      acc += (dz[r] ? dz[r].precioExcedente : 0) * w;
-    }
-    rowEx.push(+(acc.toFixed(2)));
-  }
-  tdata.push(rowEx);
-  const ws5 = XLSX.utils.aoa_to_sheet(tdata);
-  ws5['!cols'] = [{wch: 22}, {wch: 14}, {wch: 14}, {wch: 14}, {wch: 14}];
-  XLSX.utils.book_append_sheet(wb, ws5, 'Tarifario sugerido');
-
-  const fechaArchivo = new Date(cot.fecha).toISOString().slice(0, 10);
-  const safeName = String(cot.titulo).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
-  XLSX.writeFile(wb, `Tarifario_${safeName || 'general'}_${fechaArchivo}.xlsx`);
-}
 
 /* ============= TOAST ============= */
 let _toastTimer = null;
@@ -1181,27 +806,141 @@ function toast(msg, isError) {
 
 /* ============= RESET ============= */
 function resetAll() {
-  if (!confirm('¿Estás seguro? Se van a borrar los datos cargados y volver a los valores por defecto. (El historial NO se borra)')) return;
+  if (!confirm('¿Borrar todos los datos y volver a los valores por defecto? (El historial NO se borra)')) return;
   state = JSON.parse(JSON.stringify(DEFAULTS));
+  state.sucursales = [sucursalEjemplo()];
+  state.tarifarioManual = {};
   saveState();
-  renderGlobales();
-  renderFijosGenerales();
-  renderVehiculos();
-  renderTroncal();
-  renderZonasRutas();
-  renderMixRutas();
-  recalc();
+  renderGlobales(); renderVehiculos(); renderMixRutas(); renderSucursales(); recalc();
   toast('Datos reseteados');
+}
+
+/* ============= PDF ============= */
+function generarPDF(titulo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297, margin = 15;
+
+  const logoX = margin + 4, logoY = margin + 6;
+  doc.setFillColor(43, 128, 200); doc.circle(logoX, logoY, 2.5, 'F');
+  doc.setFillColor(43, 212, 217); doc.circle(logoX + 0.6, logoY + 0.6, 1.4, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(13, 44, 102);
+  doc.text('SOUTHPOST', logoX + 5, logoY + 1.5);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+  doc.text('FECHA DE EMISIÓN', pageW - margin, margin + 4, { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(13, 44, 102);
+  doc.text(fechaArgentina(), pageW - margin, margin + 9, { align: 'right' });
+  doc.setDrawColor(10, 22, 40); doc.setLineWidth(0.6); doc.line(margin, margin + 14, pageW - margin, margin + 14);
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 75, 168);
+  doc.text('TARIFARIO VIGENTE', pageW / 2, margin + 22, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(13, 44, 102);
+  doc.text(titulo, pageW / 2, margin + 31, { align: 'center' });
+
+  const headers = [['Peso aforado', 'ZONA I', 'ZONA II', 'ZONA III', 'ZONA IV']];
+  const body = [];
+  PESOS_TARIFA.forEach(peso => {
+    const row = [`${peso} KG`];
+    ZONAS_KEY.forEach(zk => { const v = precioFinalZona(zk, peso); row.push(v !== null ? fmt(v) : '—'); });
+    body.push(row);
+  });
+
+  doc.autoTable({
+    head: headers, body, startY: margin + 38, theme: 'grid', margin: { left: margin, right: margin },
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, lineColor: [197, 210, 227], lineWidth: 0.1, textColor: [13, 44, 102] },
+    headStyles: { fillColor: [10, 22, 40], textColor: [255, 255, 255], fontSize: 9, fontStyle: 'bold', halign: 'right', cellPadding: 2.5 },
+    columnStyles: { 0: { halign: 'left', cellWidth: 38, fillColor: [244, 247, 251], fontStyle: 'italic', textColor: [10, 22, 40], fontSize: 10 }, 1:{halign:'right',fontStyle:'bold'}, 2:{halign:'right',fontStyle:'bold'}, 3:{halign:'right',fontStyle:'bold'}, 4:{halign:'right',fontStyle:'bold'} },
+    alternateRowStyles: { fillColor: [246, 249, 253] },
+    didParseCell: function (data) { if (data.section === 'head' && data.column.index >= 1) data.cell.styles.fillColor = [13, 44, 102]; },
+  });
+
+  let finalY = doc.lastAutoTable.finalY;
+  const warnY = finalY + 8;
+  doc.setFillColor(244, 247, 251); doc.rect(margin, warnY, pageW - 2 * margin, 11, 'F');
+  doc.setFillColor(43, 212, 217); doc.rect(margin, warnY, 1.2, 11, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(10, 165, 170);
+  doc.text('AVISO', margin + 4, warnY + 4);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(13, 44, 102);
+  doc.text('Tarifario de uso interno · KG aforado: max(peso real, m³ × 250) · No para envío comercial', margin + 4, warnY + 8.5);
+
+  const footerY = pageH - margin + 2;
+  doc.setDrawColor(197, 210, 227); doc.setLineWidth(0.2); doc.line(margin, footerY - 4, pageW - margin, footerY - 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+  doc.text('SOUTHPOST · Calculadora de tarifario v11', margin, footerY);
+  doc.text('Página 1 de 1', pageW - margin, footerY, { align: 'right' });
+
+  const fa = new Date().toISOString().slice(0, 10);
+  const safe = titulo.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  doc.save(`Tarifario_${safe || 'general'}_${fa}.pdf`);
+}
+
+/* ============= EXCEL ============= */
+function exportarExcel(titulo) { exportarExcelDesdeSnapshot(crearSnapshot(titulo)); }
+function exportarExcelDesdeSnapshot(cot) {
+  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargada', true); return; }
+  const wb = XLSX.utils.book_new();
+  const e = cot.estado, d = cot.datos;
+
+  // Resumen
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ['SOUTHPOST · Tarifario archivado (modelo sucursales v11)'], [],
+    ['Título', cot.titulo], ['Fecha', new Date(cot.fecha).toLocaleString('es-AR')], [],
+    ['Factor aforo', `1 m³ = ${FACTOR_AFORO} KG`],
+    ['Volumen mensual', e.volTotal], ['Margen', (e.margen||0)+'%'],
+    ['Fijo total (sucursales)', cot.totalFijo||0], ['Cantidad sucursales', (e.sucursales||[]).length],
+  ]);
+  ws1['!cols'] = [{wch:30},{wch:24}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+
+  // Tarifario
+  const tHead = ['Peso','ZONA I','ZONA II','ZONA III','ZONA IV'];
+  const tData = [tHead];
+  PESOS_TARIFA.forEach(p => {
+    const row = [`${p} KG`];
+    ZONAS_KEY.forEach(zk => { const v = d.tarifa[zk] ? d.tarifa[zk][p] : null; row.push(v !== null && v !== undefined ? Math.round(v) : ''); });
+    tData.push(row);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(tData);
+  ws2['!cols'] = [{wch:12},{wch:14},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Tarifario');
+
+  // Equilibrio
+  const eqData = [['Sucursal','Zonas','Fijo mensual','Cobra/guía','Costo var/guía','Contribución','Equilibrio (guías/mes)']];
+  (d.equilibrios||[]).forEach(eq => {
+    eqData.push([eq.nombre, (eq.zonas||[]).join(' '), Math.round(eq.fijo), Math.round(eq.precioCobra), Math.round(eq.cv), Math.round(eq.contrib), eq.guias !== null ? eq.guias : 'no rentable']);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(eqData);
+  ws3['!cols'] = [{wch:18},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Equilibrio sucursales');
+
+  // Sucursales detalle
+  const sData = [['Sucursal','Concepto','Valor']];
+  (e.sucursales||[]).forEach(s => {
+    CONCEPTOS_FIJOS.forEach(c => sData.push([s.nombre, c.label, s.fijos[c.key]||0]));
+    sData.push([s.nombre, 'Troncal', s.troncal||0]);
+    sData.push([s.nombre, 'Zonas', ZONAS_KEY.filter(z=>s.zonas[z]).join(' ')]);
+    RUTAS.forEach(r => {
+      const rd = s.rutas[r.id];
+      const veh = (e.vehiculos||[]).find(v=>v.id===rd.vehiculoId);
+      sData.push([s.nombre, `Ruta ${r.id}`, `${veh?veh.nombre:'—'} · viaje ${rd.costoViaje} · ${rd.paradas} paradas`]);
+    });
+    sData.push([]);
+  });
+  const ws4 = XLSX.utils.aoa_to_sheet(sData);
+  ws4['!cols'] = [{wch:18},{wch:20},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Sucursales');
+
+  const fa = new Date(cot.fecha).toISOString().slice(0, 10);
+  const safe = String(cot.titulo).replace(/[^a-zA-Z0-9_-]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  XLSX.writeFile(wb, `Tarifario_${safe || 'general'}_${fa}.xlsx`);
 }
 
 /* ============= INIT ============= */
 renderGlobales();
-renderFijosGenerales();
 renderVehiculos();
-renderTroncal();
-renderZonasRutas();
 renderMixRutas();
-renderZonaTabs();
+renderSucursales();
 renderHistorial();
 recalc();
-document.getElementById('lastUpdate').textContent = 'Cargado: ' + new Date().toLocaleTimeString('es-AR');
+const lu = document.getElementById('lastUpdate');
+if (lu) lu.textContent = 'Cargado: ' + new Date().toLocaleTimeString('es-AR');
