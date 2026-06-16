@@ -163,7 +163,7 @@ function renderVehiculos() {
     html += `<tr>
       <td><input type="text" data-veh-i="${i}" data-veh-campo="nombre" value="${escaparHTML(v.nombre)}"></td>
       <td><input type="number" data-veh-i="${i}" data-veh-campo="m3" value="${v.m3}" min="0.01" step="0.1"></td>
-      <td class="derived">${kgAf.toLocaleString('es-AR')} KG</td>
+      <td class="derived" id="vehKgAf-${i}">${kgAf.toLocaleString('es-AR')} KG</td>
       <td><button class="del-btn" onclick="eliminarVehiculo(${i})">Eliminar</button></td>
     </tr>`;
   });
@@ -175,12 +175,17 @@ function renderVehiculos() {
       const campo = e.target.dataset.vehCampo;
       if (campo === 'm3') {
         state.vehiculos[i][campo] = +e.target.value || 0;
+        // Solo actualizar la celda derivada de KG aforados
+        const elKg = document.getElementById('vehKgAf-' + i);
+        if (elKg) elKg.textContent = ((state.vehiculos[i].m3 || 0) * FACTOR_AFORO).toLocaleString('es-AR') + ' KG';
       } else {
         state.vehiculos[i][campo] = e.target.value;
       }
       saveState();
-      renderVehiculos();
-      renderZonasRutas(); // refresh dropdowns
+      // Actualizar dropdowns de zonas/rutas (texto solo, sin regenerar inputs)
+      actualizarDropdownsVehiculos();
+      // Actualizar columnas derivadas de zonas/rutas
+      actualizarDerivadasRutas();
       recalc();
     });
   });
@@ -245,13 +250,13 @@ function renderZonasRutas() {
       html += `<tr>
         <td><span class="ruta-label">${RUTAS[r].label}<span class="ruta-km">${RUTAS[r].km}</span></span></td>
         <td>
-          <select data-z="${z}" data-r="${r}" data-campo="vehiculoId">
+          <select data-z="${z}" data-r="${r}" data-campo="vehiculoId" id="selVeh-${z}-${r}">
             ${state.vehiculos.map(v => `<option value="${v.id}" ${v.id === ruta.vehiculoId ? 'selected' : ''}>${escaparHTML(v.nombre)} (${v.m3} m³)</option>`).join('')}
           </select>
         </td>
         <td><input type="number" data-z="${z}" data-r="${r}" data-campo="costoViaje" value="${ruta.costoViaje}" min="0" step="1000"></td>
-        <td class="derived">${fmt(costoPorKgAf)}<div class="sub">por KG aforado</div></td>
-        <td class="derived">${fmt(costoPorM3)}<div class="sub">por m³</div></td>
+        <td class="derived" id="rutaKgAf-${z}-${r}">${fmt(costoPorKgAf)}<div class="sub">por KG aforado</div></td>
+        <td class="derived" id="rutaM3-${z}-${r}">${fmt(costoPorM3)}<div class="sub">por m³</div></td>
       </tr>`;
     }
     html += `</tbody></table>`;
@@ -271,10 +276,49 @@ function renderZonasRutas() {
         state.rutas[z][r][c] = e.target.value;
       }
       saveState();
-      renderZonasRutas(); // refresh derived columns
+      // Actualizar solo las celdas derivadas de ESTA fila (no regenerar)
+      actualizarCeldaRutaDerivada(z, r);
       recalc();
     });
   });
+}
+
+// Actualiza las columnas derivadas ($/KG aforado y $/m³) de una fila sin regenerar inputs
+function actualizarCeldaRutaDerivada(z, r) {
+  const ruta = state.rutas[z][r];
+  const veh = state.vehiculos.find(v => v.id === ruta.vehiculoId);
+  const m3 = veh ? veh.m3 : 0;
+  const kgAf = m3 * FACTOR_AFORO;
+  const costoPorKgAf = kgAf > 0 ? ruta.costoViaje / kgAf : 0;
+  const costoPorM3 = m3 > 0 ? ruta.costoViaje / m3 : 0;
+  const elKg = document.getElementById(`rutaKgAf-${z}-${r}`);
+  const elM3 = document.getElementById(`rutaM3-${z}-${r}`);
+  if (elKg) elKg.innerHTML = `${fmt(costoPorKgAf)}<div class="sub">por KG aforado</div>`;
+  if (elM3) elM3.innerHTML = `${fmt(costoPorM3)}<div class="sub">por m³</div>`;
+}
+
+// Actualiza todas las celdas derivadas de rutas (cuando cambia un vehículo)
+function actualizarDerivadasRutas() {
+  for (let z = 0; z < 4; z++) {
+    for (let r = 0; r < 5; r++) {
+      actualizarCeldaRutaDerivada(z, r);
+    }
+  }
+}
+
+// Actualiza el texto de las opciones de los dropdowns de vehículos
+// (cuando cambia un nombre o m³ de vehículo) sin regenerar la tabla entera
+function actualizarDropdownsVehiculos() {
+  for (let z = 0; z < 4; z++) {
+    for (let r = 0; r < 5; r++) {
+      const sel = document.getElementById(`selVeh-${z}-${r}`);
+      if (!sel) continue;
+      const idSeleccionado = state.rutas[z][r].vehiculoId;
+      sel.innerHTML = state.vehiculos.map(v =>
+        `<option value="${v.id}" ${v.id === idSeleccionado ? 'selected' : ''}>${escaparHTML(v.nombre)} (${v.m3} m³)</option>`
+      ).join('');
+    }
+  }
 }
 
 function renderGlobales() {
