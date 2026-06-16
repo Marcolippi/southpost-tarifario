@@ -38,6 +38,10 @@ const DEFAULTS = {
     alquiler: 800000, personal: 1500000, servicios: 200000, combustible: 300000,
     seguros: 150000, insumos: 100000, otros: 0,
   },
+  // Pallet estándar 1 × 1,2 × 1,5 = 1,8 m³ = 450 KG aforados
+  pallet: { largo: 1.0, ancho: 1.2, alto: 1.5 },
+  // Costos troncales por zona destino (Z.I = 0, es el hub)
+  troncalPorZona: [0, 80000, 120000, 200000],
   vehiculos: [
     { id: 'v_moto',   nombre: 'Moto',          m3: 0.3 },
     { id: 'v_util',   nombre: 'Utilitario',     m3: 1.0 },
@@ -93,6 +97,12 @@ function loadState() {
       for (const k in parsed) {
         if (k === 'fijosGenerales' && typeof parsed.fijosGenerales === 'object') {
           base.fijosGenerales = { ...base.fijosGenerales, ...parsed.fijosGenerales };
+        } else if (k === 'pallet' && typeof parsed.pallet === 'object') {
+          base.pallet = { ...base.pallet, ...parsed.pallet };
+        } else if (k === 'troncalPorZona' && Array.isArray(parsed.troncalPorZona)) {
+          for (let i = 0; i < 4; i++) {
+            if (parsed.troncalPorZona[i] !== undefined) base.troncalPorZona[i] = parsed.troncalPorZona[i];
+          }
         } else if (k === 'vehiculos' && Array.isArray(parsed.vehiculos)) {
           base.vehiculos = parsed.vehiculos;
         } else if (k === 'rutas' && Array.isArray(parsed.rutas)) {
@@ -223,6 +233,97 @@ function eliminarVehiculo(i) {
   renderVehiculos();
   renderZonasRutas();
   recalc();
+}
+
+/* ============= TRONCAL ============= */
+function palletM3() {
+  return (state.pallet.largo || 0) * (state.pallet.ancho || 0) * (state.pallet.alto || 0);
+}
+function palletKgAforado() {
+  return palletM3() * FACTOR_AFORO;
+}
+
+function renderTroncal() {
+  // Solo necesito setear los inputs del pallet y la tabla la primera vez
+  const palletL = document.getElementById('palletLargo');
+  const palletA = document.getElementById('palletAncho');
+  const palletH = document.getElementById('palletAlto');
+  if (palletL) palletL.value = state.pallet.largo;
+  if (palletA) palletA.value = state.pallet.ancho;
+  if (palletH) palletH.value = state.pallet.alto;
+  actualizarPalletDerivado();
+
+  // Tabla de costos por zona destino
+  const tbl = document.getElementById('tablaTroncal');
+  let html = `<thead><tr>
+    <th>Destino (desde HUB)</th>
+    <th style="width:180px; text-align:right;">Costo por pallet</th>
+    <th style="text-align:right;">$ / KG aforado</th>
+    <th style="text-align:right;">$ / m³</th>
+  </tr></thead><tbody>`;
+  for (let z = 1; z < 4; z++) { // Z.I no tiene troncal
+    const costo = state.troncalPorZona[z] || 0;
+    const kgAf = palletKgAforado();
+    const costoKgAf = kgAf > 0 ? costo / kgAf : 0;
+    const m3 = palletM3();
+    const costoM3 = m3 > 0 ? costo / m3 : 0;
+    html += `<tr>
+      <td><span class="zona-label">${ZONAS[z]}</span></td>
+      <td><input type="number" data-troncal-z="${z}" value="${costo}" min="0" step="1000"></td>
+      <td class="derived" id="troncalKgAf-${z}">${fmt(costoKgAf)}<span class="sub">por KG aforado</span></td>
+      <td class="derived" id="troncalM3-${z}">${fmt(costoM3)}<span class="sub">por m³</span></td>
+    </tr>`;
+  }
+  html += `</tbody>`;
+  tbl.innerHTML = html;
+
+  // Listeners
+  tbl.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const z = +e.target.dataset.troncalZ;
+      state.troncalPorZona[z] = +e.target.value || 0;
+      saveState();
+      actualizarTroncalDerivadoZona(z);
+      recalc();
+    });
+  });
+
+  // Listeners del pallet (solo una vez)
+  if (palletL && !palletL.dataset.bound) {
+    [palletL, palletA, palletH].forEach(inp => {
+      const campo = inp.id === 'palletLargo' ? 'largo' : inp.id === 'palletAncho' ? 'ancho' : 'alto';
+      inp.addEventListener('input', e => {
+        state.pallet[campo] = +e.target.value || 0;
+        saveState();
+        actualizarPalletDerivado();
+        // Actualizar todas las derivadas del troncal
+        for (let z = 1; z < 4; z++) actualizarTroncalDerivadoZona(z);
+        recalc();
+      });
+      inp.dataset.bound = '1';
+    });
+  }
+}
+
+function actualizarPalletDerivado() {
+  const m3 = palletM3();
+  const kg = palletKgAforado();
+  const elM3 = document.getElementById('palletM3');
+  const elKg = document.getElementById('palletKgAforado');
+  if (elM3) elM3.textContent = m3.toLocaleString('es-AR', {maximumFractionDigits: 2}) + ' m³';
+  if (elKg) elKg.textContent = kg.toLocaleString('es-AR', {maximumFractionDigits: 0}) + ' KG aforados';
+}
+
+function actualizarTroncalDerivadoZona(z) {
+  const costo = state.troncalPorZona[z] || 0;
+  const kgAf = palletKgAforado();
+  const m3 = palletM3();
+  const costoKgAf = kgAf > 0 ? costo / kgAf : 0;
+  const costoM3 = m3 > 0 ? costo / m3 : 0;
+  const elKg = document.getElementById(`troncalKgAf-${z}`);
+  const elM3 = document.getElementById(`troncalM3-${z}`);
+  if (elKg) elKg.innerHTML = `${fmt(costoKgAf)}<span class="sub">por KG aforado</span>`;
+  if (elM3) elM3.innerHTML = `${fmt(costoM3)}<span class="sub">por m³</span>`;
 }
 
 function renderZonasRutas() {
@@ -379,8 +480,16 @@ function recalc() {
   const factorPrecio = (1 - margenDec) > 0 ? 1 / (1 - margenDec) : null;
   const fijosPorGuia = (totFijo * state.absorCot / 100) / (state.volTotal || 1);
 
+  // Troncal $/KG aforado por zona
+  const palletKg = palletKgAforado();
+  const troncalKgPorZona = [0, 0, 0, 0];
+  for (let z = 0; z < 4; z++) {
+    if (z === 0) { troncalKgPorZona[z] = 0; continue; }
+    troncalKgPorZona[z] = palletKg > 0 ? (state.troncalPorZona[z] || 0) / palletKg : 0;
+  }
+
   // Matriz [zona][ruta] de info y precios
-  const datos = []; // por zona, por ruta, por peso
+  const datos = [];
   for (let z = 0; z < 4; z++) {
     const filaZona = [];
     for (let r = 0; r < 5; r++) {
@@ -388,10 +497,15 @@ function recalc() {
       const veh = state.vehiculos.find(v => v.id === ruta.vehiculoId);
       const m3 = veh ? veh.m3 : 0;
       const capKg = m3 * FACTOR_AFORO;
-      const costoKgVar = capKg > 0 ? ruta.costoViaje / capKg : 0; // costo variable por KG aforado
+      // UM por KG aforado
+      const umKgVar = capKg > 0 ? ruta.costoViaje / capKg : 0;
+      // Troncal por KG aforado de esta zona
+      const troncalKgVar = troncalKgPorZona[z];
+      // Costo variable total por KG aforado = troncal + UM
+      const costoKgVar = troncalKgVar + umKgVar;
       const precioKgVar = factorPrecio !== null ? costoKgVar * factorPrecio : 0;
       const fijosConMargen = factorPrecio !== null ? fijosPorGuia * factorPrecio : 0;
-      // Para cada peso
+      // Precios por peso
       const precios = PESOS_TARIFA.map(p => fijosConMargen + p * precioKgVar);
       // Excedente: solo variable
       const precioExcedente = precioKgVar;
@@ -400,6 +514,8 @@ function recalc() {
         vehM3: m3,
         capKg: capKg,
         costoViaje: ruta.costoViaje,
+        troncalKgVar: troncalKgVar,
+        umKgVar: umKgVar,
         costoKgVar: costoKgVar,
         precioKgVar: precioKgVar,
         precios: precios,
@@ -412,6 +528,7 @@ function recalc() {
   window._datos = datos;
   window._fijosPorGuia = fijosPorGuia;
   window._totalFijo = totFijo;
+  window._troncalKgPorZona = troncalKgPorZona;
 
   renderTarifariosPorZona(datos);
   renderEquilibrio(datos);
@@ -450,7 +567,22 @@ function renderTarifariosPorZona(datos) {
       html += `<td style="text-align:right; font-size:11px; color:#666;">${escaparHTML(d.vehNombre)} (${d.vehM3} m³)</td>`;
     }
     html += `</tr>`;
-    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">$ / KG aforado</td>`;
+    // Fila troncal $/KG
+    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">$ / KG troncal</td>`;
+    for (let r = 0; r < 5; r++) {
+      const d = datos[z][r];
+      html += `<td style="text-align:right; font-size:11px; color:#666;">${fmt(d.troncalKgVar)}</td>`;
+    }
+    html += `</tr>`;
+    // Fila UM $/KG
+    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;">$ / KG última milla</td>`;
+    for (let r = 0; r < 5; r++) {
+      const d = datos[z][r];
+      html += `<td style="text-align:right; font-size:11px; color:#666;">${fmt(d.umKgVar)}</td>`;
+    }
+    html += `</tr>`;
+    // Fila precio total $/KG aforado (con margen)
+    html += `<tr class="info-row"><td class="range-label" style="font-style:italic; color:#666;"><strong>$ / KG aforado (venta)</strong></td>`;
     for (let r = 0; r < 5; r++) {
       const d = datos[z][r];
       html += `<td style="text-align:right; font-size:11px; color:var(--cyan-deep); font-weight:700;">${fmt(d.precioKgVar)}</td>`;
@@ -649,9 +781,27 @@ function generarPDF(titulo) {
       `${datos[z][3].vehNombre} (${datos[z][3].vehM3} m³)`,
       `${datos[z][4].vehNombre} (${datos[z][4].vehM3} m³)`,
     ]);
-    // Fila info: $/KG aforado
+    // Fila info: $/KG troncal
     body.push([
-      '$ / KG aforado',
+      '$ / KG troncal',
+      fmt(datos[z][0].troncalKgVar),
+      fmt(datos[z][1].troncalKgVar),
+      fmt(datos[z][2].troncalKgVar),
+      fmt(datos[z][3].troncalKgVar),
+      fmt(datos[z][4].troncalKgVar),
+    ]);
+    // Fila info: $/KG UM
+    body.push([
+      '$ / KG última milla',
+      fmt(datos[z][0].umKgVar),
+      fmt(datos[z][1].umKgVar),
+      fmt(datos[z][2].umKgVar),
+      fmt(datos[z][3].umKgVar),
+      fmt(datos[z][4].umKgVar),
+    ]);
+    // Fila info: $/KG aforado total (venta)
+    body.push([
+      '$ / KG aforado (venta)',
       fmt(datos[z][0].precioKgVar),
       fmt(datos[z][1].precioKgVar),
       fmt(datos[z][2].precioKgVar),
@@ -689,12 +839,17 @@ function generarPDF(titulo) {
         if (data.section === 'head' && data.column.index >= 1) {
           data.cell.styles.fillColor = [13, 44, 102];
         }
-        // Filas info (2 primeras): gris claro
-        if (data.section === 'body' && data.row.index < 2) {
+        // Filas info (4 primeras): gris claro
+        if (data.section === 'body' && data.row.index < 4) {
           data.cell.styles.fillColor = [230, 237, 246];
           data.cell.styles.fontStyle = 'normal';
           data.cell.styles.fontSize = 7;
           if (data.column.index === 0) data.cell.styles.textColor = [102, 102, 102];
+          // La cuarta fila (info de $/KG aforado venta) en cyan
+          if (data.row.index === 3) {
+            data.cell.styles.textColor = [10, 165, 170];
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
         // Última fila (excedente)
         if (data.section === 'body' && data.row.index === body.length - 1) {
@@ -785,6 +940,7 @@ function recargarTarifario(id) {
   renderGlobales();
   renderFijosGenerales();
   renderVehiculos();
+  renderTroncal();
   renderZonasRutas();
   recalc();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -861,6 +1017,18 @@ function verDetalleTarifario(id) {
     html += `<tr><td>${escaparHTML(v.nombre)}</td><td>${v.m3} m³</td><td>${(v.m3 * FACTOR_AFORO).toLocaleString('es-AR')} KG</td></tr>`;
   });
   html += `</tbody></table></div>`;
+  // Troncal
+  const palletM3Detalle = e.pallet ? (e.pallet.largo * e.pallet.ancho * e.pallet.alto) : 1.8;
+  const palletKgDetalle = palletM3Detalle * FACTOR_AFORO;
+  html += `<div class="detalle-block"><h4>Costos troncales</h4>`;
+  html += `<p style="font-size:11px; color:#666; margin:0 0 8px 0;">Pallet: ${e.pallet ? e.pallet.largo : 1} × ${e.pallet ? e.pallet.ancho : 1.2} × ${e.pallet ? e.pallet.alto : 1.5} m = ${palletM3Detalle.toFixed(2)} m³ = ${palletKgDetalle.toFixed(0)} KG aforados</p>`;
+  html += `<table class="detalle-table"><thead><tr><th>Destino</th><th>Costo por pallet</th><th>$ / KG aforado</th></tr></thead><tbody>`;
+  for (let z = 1; z < 4; z++) {
+    const c = (e.troncalPorZona && e.troncalPorZona[z]) || 0;
+    const kgAf = palletKgDetalle > 0 ? c / palletKgDetalle : 0;
+    html += `<tr><td>${ZONAS[z]}</td><td>${fmt(c)}</td><td>${fmt(kgAf)}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
   // Rutas por zona
   for (let z = 0; z < 4; z++) {
     html += `<div class="detalle-block"><h4>${ZONAS[z]} — Costos por ruta</h4><table class="detalle-table"><thead><tr><th>Ruta</th><th>Vehículo</th><th>Costo viaje</th><th>$/KG af.</th></tr></thead><tbody>`;
@@ -921,8 +1089,26 @@ function exportarExcelDesdeSnapshot(cot) {
   ws3['!cols'] = [{wch: 28}, {wch: 10}, {wch: 14}];
   XLSX.utils.book_append_sheet(wb, ws3, 'Vehículos');
 
-  // Hoja 4: Costos por ruta
-  const rdata = [['Zona', 'Ruta', 'KM', 'Vehículo', 'm³', 'Costo viaje', 'KG aforado', '$ / KG aforado', '$ / m³']];
+  // Hoja 4: Costos troncales
+  const m3Pallet = (e.pallet ? e.pallet.largo * e.pallet.ancho * e.pallet.alto : 1.8);
+  const kgPallet = m3Pallet * FACTOR_AFORO;
+  const trncdata = [
+    ['Pallet estándar:', `${e.pallet ? e.pallet.largo : 1} × ${e.pallet ? e.pallet.ancho : 1.2} × ${e.pallet ? e.pallet.alto : 1.5} m = ${m3Pallet.toFixed(2)} m³ = ${kgPallet.toFixed(0)} KG aforados`],
+    [],
+    ['Destino', 'Costo por pallet', '$ / KG aforado', '$ / m³'],
+  ];
+  for (let z = 1; z < 4; z++) {
+    const c = (e.troncalPorZona && e.troncalPorZona[z]) || 0;
+    const kgAf = kgPallet > 0 ? c / kgPallet : 0;
+    const m3 = m3Pallet > 0 ? c / m3Pallet : 0;
+    trncdata.push([ZONAS[z], c, +(kgAf.toFixed(2)), +(m3.toFixed(2))]);
+  }
+  const ws4tr = XLSX.utils.aoa_to_sheet(trncdata);
+  ws4tr['!cols'] = [{wch: 20}, {wch: 18}, {wch: 18}, {wch: 18}];
+  XLSX.utils.book_append_sheet(wb, ws4tr, 'Costos troncales');
+
+  // Hoja 5: Costos por ruta (UM)
+  const rdata = [['Zona', 'Ruta', 'KM', 'Vehículo', 'm³', 'Costo viaje', 'KG aforado', '$ / KG aforado (UM)', '$ / m³']];
   for (let z = 0; z < 4; z++) {
     for (let r = 0; r < 5; r++) {
       const ru = e.rutas[z][r];
@@ -936,7 +1122,7 @@ function exportarExcelDesdeSnapshot(cot) {
   }
   const ws4 = XLSX.utils.aoa_to_sheet(rdata);
   ws4['!cols'] = [{wch: 10}, {wch: 10}, {wch: 14}, {wch: 22}, {wch: 8}, {wch: 14}, {wch: 14}, {wch: 16}, {wch: 14}];
-  XLSX.utils.book_append_sheet(wb, ws4, 'Costos por ruta');
+  XLSX.utils.book_append_sheet(wb, ws4, 'Última milla');
 
   // Hoja 5: Tarifario por zona (las 4 zonas en una sola hoja)
   const tdata = [['Zona', 'Peso', 'Ruta A', 'Ruta B', 'Ruta C', 'Ruta D', 'Ruta E']];
@@ -979,6 +1165,7 @@ function resetAll() {
   renderGlobales();
   renderFijosGenerales();
   renderVehiculos();
+  renderTroncal();
   renderZonasRutas();
   recalc();
   toast('Datos reseteados');
@@ -988,6 +1175,7 @@ function resetAll() {
 renderGlobales();
 renderFijosGenerales();
 renderVehiculos();
+renderTroncal();
 renderZonasRutas();
 renderZonaTabs();
 renderHistorial();
