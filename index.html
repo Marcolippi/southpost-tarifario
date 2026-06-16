@@ -16,12 +16,12 @@
 <div class="wrap">
 
   <header class="masthead">
-    <span class="badge">Calculadora · v7.0</span>
+    <span class="badge">Calculadora · v8.0</span>
     <div>
       <div class="logo-mark"><span class="logo-dot"></span> SOUTHPOST</div>
-      <h1>Tarifario <em>vigente</em></h1>
+      <h1>Tarifario <em>por aforo</em></h1>
       <div style="font-family: 'JetBrains Mono',monospace; font-size:11px; color:var(--primary-deep); margin-top:6px; letter-spacing:0.05em;">
-        COSTOS FIJOS GENERALES · UM POR ZONA HASTA 25 KG + EXCEDENTE · TARIFARIO GENERAL ESTÁNDAR
+        COSTOS POR VIAJE · CAPACIDAD M³ · TARIFA POR KG AFORADO (1 m³ = 250 KG)
       </div>
     </div>
     <div class="meta">
@@ -61,35 +61,36 @@
     <div class="section-head">
       <span class="section-num">02</span>
       <h2>Costos fijos generales</h2>
-      <span class="desc">Estructura mensual única — no se divide por zonas</span>
+      <span class="desc">Estructura mensual única — se prorratea linealmente por guía</span>
     </div>
     <div class="fijos-generales" id="fijosGenerales"></div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 03 — Costos variables por zona -->
+  <!-- 03 — Catálogo de vehículos -->
   <div class="section">
     <div class="section-head">
       <span class="section-num">03</span>
-      <h2>Costos variables por zona</h2>
-      <span class="desc">Troncal por pallet + Última milla por kilo (1 a 25 KG + excedente)</span>
+      <h2>Catálogo de vehículos</h2>
+      <span class="desc">Tus vehículos disponibles · 1 m³ = 250 KG aforados</span>
     </div>
-    <div class="zonas-grid" id="zonasGrid"></div>
+    <div class="vehiculos-container">
+      <table class="tarif vehiculos-table" id="tablaVehiculos"></table>
+      <button class="add-veh-btn" onclick="agregarVehiculo()">+ Agregar vehículo</button>
+    </div>
   </div>
 
   <div class="step-arrow">▼</div>
 
-  <!-- 04 — Capacidad pallet -->
+  <!-- 04 — Costos variables por zona × ruta -->
   <div class="section">
     <div class="section-head">
       <span class="section-num">04</span>
-      <h2>Guías por pallet (capacidad por rango)</h2>
-      <span class="desc">Cuántas guías de cada rango entran en un pallet de troncal</span>
+      <h2>Costos variables por zona × ruta</h2>
+      <span class="desc">Para cada Zona × Ruta km: vehículo + costo del viaje</span>
     </div>
-    <div class="capacidades">
-      <table class="tarif" id="tablaCapacidad"></table>
-    </div>
+    <div class="zonas-rutas" id="zonasRutas"></div>
   </div>
 
   <div class="step-arrow">▼</div>
@@ -123,24 +124,13 @@
     <div class="section-head">
       <span class="section-num final">06</span>
       <h2 class="final">Tarifario sugerido</h2>
-      <span class="desc">Precio sugerido por kilo y zona — válido para cualquier cliente</span>
+      <span class="desc">Precio por KG aforado · Por zona · Por ruta km</span>
     </div>
-    <div class="tabs">
-      <button class="tab active" data-tab="precios" onclick="showTab('precios')">→ Precio sugerido</button>
-      <button class="tab" data-tab="costos" onclick="showTab('costos')">Costo por guía</button>
-      <button class="tab" data-tab="ganancia" onclick="showTab('ganancia')">Ganancia por guía</button>
-    </div>
-    <div class="tab-content active" id="tab-precios">
-      <div class="tarifario-final"><table class="output" id="tablaPrecios"></table></div>
-    </div>
-    <div class="tab-content" id="tab-costos">
-      <div class="output-table"><table class="output" id="tablaCostos"></table></div>
-    </div>
-    <div class="tab-content" id="tab-ganancia">
-      <div class="output-table"><table class="output" id="tablaGanancia"></table></div>
-    </div>
+    <div class="zona-tabs" id="zonaTabs"></div>
+    <div id="tarifariosPorZona"></div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      La fila "KG excedente" muestra el precio sugerido por cada kilo adicional a partir de los 25 KG.
+      Los KG son <strong>aforados</strong>: peso_aforado = max(peso_real, m³ × 250). 
+      La fila "KG excedente" es el precio por cada KG aforado adicional a partir de los 50 KG.
     </div>
   </div>
 
@@ -151,14 +141,13 @@
     <div class="section-head">
       <span class="section-num cyan">07</span>
       <h2>Punto de equilibrio</h2>
-      <span class="desc">Guías necesarias para cubrir los costos fijos · No perder plata</span>
+      <span class="desc">Guías necesarias para cubrir los costos fijos</span>
     </div>
     <div class="output-table">
       <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Cada celda muestra cuántas guías de ese tipo (peso × zona) necesitás vender mensualmente para cubrir el 100% de tus costos fijos.
-      Si todo tu volumen fuera de ese tipo, ese sería tu punto de equilibrio.
+      Cada celda muestra cuántas guías de 25 KG aforados (típico ecommerce) necesitás vender por cada (Zona × Ruta) para cubrir el 100% de tus costos fijos.
     </div>
   </div>
 
