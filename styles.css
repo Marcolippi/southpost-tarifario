@@ -271,6 +271,24 @@ table.output tr.info-row td { background: var(--paper-2); font-size: 10px; color
 .suc-zona-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; font-family: 'Manrope', sans-serif; color: var(--ink); }
 .suc-zona-chk input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
 
+/* Mix de zonas por sucursal */
+.suc-zonas-mix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.suc-zona-mix-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; }
+.suc-zona-mix-item label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--cyan-deep); font-weight: 700; letter-spacing: 0.06em; }
+.suc-zona-mix-item .zmix-wrap { display: flex; align-items: center; gap: 4px; }
+.suc-zona-mix-item input { flex: 1; padding: 7px 9px; border: 1px solid var(--rule); background: white; font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; text-align: right; color: var(--ink); }
+.suc-zona-mix-item input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.suc-zona-mix-item .pct { font-family: 'Fraunces', serif; font-size: 16px; color: var(--cyan-deep); font-weight: 700; }
+.suc-zonas-total { margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; padding: 7px 12px; background: var(--paper-2); border-left: 4px solid var(--success); color: var(--primary-deep); border-radius: 2px; }
+.suc-zonas-total.error { border-left-color: var(--danger); color: var(--danger); background: rgba(229,75,75,0.08); }
+
+/* Control de % de ganancia en tarifario */
+.margen-control { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.margen-control .margen-lbl { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-deep); }
+.margen-control input { width: 90px; padding: 8px 10px; border: 1px solid var(--rule); background: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; text-align: right; color: var(--ink); }
+.margen-control input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.margen-control .margen-help { font-size: 11px; color: #888; font-style: italic; }
+
 .suc-troncal { display: flex; align-items: center; gap: 12px; }
 .suc-troncal input { width: 160px; padding: 8px 10px; border: 1px solid var(--rule); background: var(--paper); font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; color: var(--ink); }
 .suc-troncal input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }

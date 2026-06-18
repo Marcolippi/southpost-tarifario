@@ -24,7 +24,7 @@ const CONCEPTOS_FIJOS = [
   { key: 'otros',       label: 'Otros gastos' },
 ];
 
-const PESO_REF_EQUILIBRIO = 25; // peso de referencia para el punto de equilibrio
+const PESO_REF_EQUILIBRIO = 5; // peso de referencia para el punto de equilibrio (guías de 5 KG)
 
 let _sucId = 0;
 function nextSucId() { _sucId++; return 'suc_' + Date.now() + '_' + _sucId; }
@@ -34,7 +34,7 @@ function sucursalNueva(nombre) {
     id: nextSucId(),
     nombre: nombre || 'Nueva sucursal',
     fijos: {},
-    zonas: { Z1: false, Z2: false, Z3: false, Z4: false },
+    mixZonas: { Z1: 0, Z2: 0, Z3: 0, Z4: 0 },
     troncal: 0,
     rutas: {},
   };
@@ -44,7 +44,6 @@ function sucursalNueva(nombre) {
 }
 
 const DEFAULTS = {
-  volTotal: 1000,
   margen: 30,
   pallet: { largo: 1.0, ancho: 1.2, alto: 1.5 },
   mixRutas: { A: 50, B: 25, C: 15, D: 7, E: 3 },
@@ -68,7 +67,7 @@ let state = loadState();
 function sucursalEjemplo() {
   const s = sucursalNueva('Rosario');
   s.fijos = { alquiler: 350000, personal: 600000, servicios: 120000, seguros: 80000, otros: 50000 };
-  s.zonas = { Z1: false, Z2: true, Z3: true, Z4: true };
+  s.mixZonas = { Z1: 10, Z2: 50, Z3: 25, Z4: 15 };
   s.troncal = 90000;
   s.rutas = {
     A: { vehiculoId: 'v_util',   costoViaje: 90000,  paradas: 55 },
@@ -151,31 +150,24 @@ function vehiculoPorId(id) {
 }
 
 /* ============= CÁLCULO ============= */
-// Precio variable (UM + troncal) ponderado por mix, para una sucursal y un peso.
-// SIN fijos. Con modelo aforo-vs-jornada.
-function precioVariableSucursal(suc, peso) {
-  const margenDec = state.margen / 100;
-  const factorPrecio = (1 - margenDec) > 0 ? 1 / (1 - margenDec) : 0;
-  const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
-  const sumMix = totalMixRutas() > 0 ? totalMixRutas() : 1;
-  let pp = 0;
-  RUTAS.forEach(r => {
-    const rd = suc.rutas[r.id];
-    const veh = vehiculoPorId(rd.vehiculoId);
-    const m3 = veh ? veh.m3 : 0;
-    const capAforoTotal = m3 * FACTOR_AFORO;
-    const entranAforo = peso > 0 ? capAforoTotal / peso : 0;
-    const entranJornada = rd.paradas || 0;
-    const capEf = Math.min(entranAforo, entranJornada);
-    const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
-    const costoVar = peso * troncalKg + umGuia;
-    const precio = costoVar * factorPrecio;
-    pp += precio * ((+state.mixRutas[r.id] || 0) / sumMix);
-  });
-  return pp;
+// Mix de zonas de una sucursal (compatible con sucursales viejas que tenían `zonas` booleano)
+function mixZonasSuc(suc) {
+  if (suc.mixZonas && typeof suc.mixZonas === 'object') return suc.mixZonas;
+  // migración: si venía con checkboxes, repartir 100% en partes iguales entre las tildadas
+  const mz = { Z1: 0, Z2: 0, Z3: 0, Z4: 0 };
+  if (suc.zonas) {
+    const ats = ZONAS_KEY.filter(z => suc.zonas[z]);
+    if (ats.length) ats.forEach(z => mz[z] = +(100 / ats.length).toFixed(2));
+  }
+  return mz;
+}
+function totalMixZonas(suc) {
+  const mz = mixZonasSuc(suc);
+  return ZONAS_KEY.reduce((a, z) => a + (+mz[z] || 0), 0);
 }
 
-// Costo variable puro (sin margen) ponderado, para una sucursal y un peso.
+// Costo variable puro (sin margen) ponderado por mix de rutas, para una sucursal y un peso.
+// Troncal amortizado por aforo del pallet + última milla con aforo-vs-jornada.
 function costoVariableSucursal(suc, peso) {
   const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
   const sumMix = totalMixRutas() > 0 ? totalMixRutas() : 1;
@@ -184,19 +176,55 @@ function costoVariableSucursal(suc, peso) {
     const rd = suc.rutas[r.id];
     const veh = vehiculoPorId(rd.vehiculoId);
     const m3 = veh ? veh.m3 : 0;
-    const capEf = Math.min(peso > 0 ? (m3 * FACTOR_AFORO) / peso : 0, rd.paradas || 0);
+    const entranAforo = peso > 0 ? (m3 * FACTOR_AFORO) / peso : 0;   // cuántos paquetes entran por volumen
+    const entranJornada = rd.paradas || 0;                           // tope por jornada (paradas)
+    const capEf = Math.min(entranAforo, entranJornada);              // cuello de botella real
     const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
     cv += (peso * troncalKg + umGuia) * ((+state.mixRutas[r.id] || 0) / sumMix);
   });
   return cv;
 }
 
-// Precio sugerido por (zona, peso): promedio simple de sucursales que atienden esa zona.
+// Precio variable (costo + margen de ganancia global), para una sucursal y un peso.
+function precioVariableSucursal(suc, peso) {
+  const margenDec = (state.margen || 0) / 100;
+  const factorPrecio = (1 - margenDec) > 0 ? 1 / (1 - margenDec) : 0;
+  return costoVariableSucursal(suc, peso) * factorPrecio;
+}
+
+// SUGERIDO por (zona, peso) — modelo A1:
+// promedio de precios de las sucursales, ponderado por el % que cada sucursal dedica a esa zona.
+function sugeridoBrutoZona(zonaKey, peso) {
+  let num = 0, den = 0;
+  state.sucursales.forEach(s => {
+    const mz = mixZonasSuc(s);
+    const w = +mz[zonaKey] || 0;
+    if (w > 0) { num += precioVariableSucursal(s, peso) * w; den += w; }
+  });
+  return den > 0 ? num / den : null;
+}
+
+// SUGERIDO con monotonía forzada: Z1 <= Z2 <= Z3 <= Z4 dentro de cada peso.
+// Si una zona no tiene cobertura (null), arrastra el valor de la zona anterior.
+function sugeridosZonasMonotono(peso) {
+  const out = {};
+  let prev = null;
+  ZONAS_KEY.forEach(zk => {
+    let v = sugeridoBrutoZona(zk, peso);
+    if (v === null) {
+      v = prev; // sin cobertura: hereda el piso anterior (puede quedar null si es la primera)
+    } else if (prev !== null && v < prev) {
+      v = prev; // forzar que nunca baje respecto de la zona anterior
+    }
+    out[zk] = v;
+    if (v !== null) prev = v;
+  });
+  return out;
+}
+
+// Precio sugerido individual (con monotonía) por zona y peso.
 function precioSugeridoZona(zonaKey, peso) {
-  const sucs = state.sucursales.filter(s => s.zonas[zonaKey]);
-  if (sucs.length === 0) return null;
-  const suma = sucs.reduce((a, s) => a + precioVariableSucursal(s, peso), 0);
-  return suma / sucs.length;
+  return sugeridosZonasMonotono(peso)[zonaKey];
 }
 
 // Precio FINAL (manual si existe, sino sugerido)
@@ -213,19 +241,24 @@ function esManual(zonaKey, peso) {
   return state.tarifarioManual[manualKey] !== undefined && state.tarifarioManual[manualKey] !== null;
 }
 
-// Cálculo del equilibrio de una sucursal:
-// cobra la tarifa publicada (final) promedio de las zonas que atiende, con sus costos variables propios.
+// EQUILIBRIO de una sucursal:
+// cobra la tarifa publicada (final) a 5 KG, ponderada por SU mix de zonas, con su costo variable propio a 5 KG.
 function equilibrioSucursal(suc) {
-  const zonasAt = ZONAS_KEY.filter(z => suc.zonas[z]);
-  if (zonasAt.length === 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt };
-  // precio que cobra: promedio de tarifas finales (peso ref) de las zonas que atiende
-  let preciosPub = [];
+  const mz = mixZonasSuc(suc);
+  const zonasAt = ZONAS_KEY.filter(z => (+mz[z] || 0) > 0);
+  const sumZ = totalMixZonas(suc);
+  if (sumZ <= 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt, fijo: totalFijosSucursal(suc) };
+
+  // precio que cobra: tarifa final a PESO_REF_EQUILIBRIO ponderada por el mix de zonas de la sucursal
+  let num = 0, den = 0;
   zonasAt.forEach(z => {
     const p = precioFinalZona(z, PESO_REF_EQUILIBRIO);
-    if (p !== null) preciosPub.push(p);
+    const w = +mz[z] || 0;
+    if (p !== null && p !== undefined) { num += p * w; den += w; }
   });
-  if (preciosPub.length === 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt };
-  const precioCobra = preciosPub.reduce((a, b) => a + b, 0) / preciosPub.length;
+  if (den <= 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt, fijo: totalFijosSucursal(suc) };
+
+  const precioCobra = num / den;
   const cv = costoVariableSucursal(suc, PESO_REF_EQUILIBRIO);
   const contrib = precioCobra - cv;
   const fijo = totalFijosSucursal(suc);
@@ -235,15 +268,21 @@ function equilibrioSucursal(suc) {
 
 /* ============= RENDER: GLOBALES ============= */
 function renderGlobales() {
-  const v = document.getElementById('volTotal'); if (v) v.value = state.volTotal;
-  const m = document.getElementById('margen'); if (m) m.value = state.margen;
   const pl = document.getElementById('palletLargo'); if (pl) pl.value = state.pallet.largo;
   const pa = document.getElementById('palletAncho'); if (pa) pa.value = state.pallet.ancho;
   const ph = document.getElementById('palletAlto'); if (ph) ph.value = state.pallet.alto;
   actualizarPalletDerivado();
 
-  if (v && !v.dataset.bound) { v.addEventListener('input', e => { state.volTotal = +e.target.value || 1; saveState(); recalc(); }); v.dataset.bound = '1'; }
-  if (m && !m.dataset.bound) { m.addEventListener('input', e => { state.margen = +e.target.value || 0; saveState(); recalc(); }); m.dataset.bound = '1'; }
+  // Margen / % de ganancia global (vive arriba del tarifario, tabla 06)
+  const mg = document.getElementById('margenGlobal');
+  if (mg) {
+    mg.value = state.margen;
+    if (!mg.dataset.bound) {
+      mg.addEventListener('input', e => { state.margen = +e.target.value || 0; saveState(); recalc(); });
+      mg.dataset.bound = '1';
+    }
+  }
+
   [pl, pa, ph].forEach(inp => {
     if (inp && !inp.dataset.bound) {
       const campo = inp.id === 'palletLargo' ? 'largo' : inp.id === 'palletAncho' ? 'ancho' : 'alto';
@@ -358,13 +397,17 @@ function renderSucursales() {
     });
     html += `</div><div class="suc-fijo-total">Total fijo: <strong id="sucFijoTotal-${suc.id}">${fmt(totalFijo)}</strong></div>`;
 
-    // Zonas
-    html += `<div class="suc-section-label">Zonas que atiende</div><div class="suc-zonas">`;
+    // Mix de zonas (% de entregas por zona) — debe sumar 100
+    const mz = mixZonasSuc(suc);
+    const totZ = totalMixZonas(suc);
+    html += `<div class="suc-section-label">Mix de zonas — % de entregas por zona</div><div class="suc-zonas-mix">`;
     ZONAS_KEY.forEach((z, zi) => {
-      const ck = suc.zonas[z] ? 'checked' : '';
-      html += `<label class="suc-zona-chk"><input type="checkbox" data-suc="${suc.id}" data-zona="${z}" ${ck}> ${ZONAS[zi]}</label>`;
+      html += `<div class="suc-zona-mix-item">
+        <label>${ZONAS[zi]}</label>
+        <div class="zmix-wrap"><input type="number" data-suc="${suc.id}" data-zonamix="${z}" value="${+mz[z]||0}" min="0" max="100" step="1"><span class="pct">%</span></div>
+      </div>`;
     });
-    html += `</div>`;
+    html += `</div><div class="suc-zonas-total ${totZ===100?'':'error'}" id="sucZonasTotal-${suc.id}">${totZ===100?`Total: ${totZ}% ✓`:`Total: ${totZ}% ⚠️ debería ser 100%`}</div>`;
 
     // Troncal (un solo costo)
     html += `<div class="suc-section-label">Troncal — costo de pallet a esta sucursal</div>
@@ -435,13 +478,20 @@ function bindSucursales() {
       recalc();
     });
   });
-  // Zonas (checkboxes) — requieren re-render parcial NO (solo recalc)
-  cont.querySelectorAll('input[data-zona]').forEach(el => {
-    el.addEventListener('change', e => {
-      const id = e.target.dataset.suc, z = e.target.dataset.zona;
+  // Mix de zonas (inputs %) — actualiza total y recalcula
+  cont.querySelectorAll('input[data-zonamix]').forEach(el => {
+    el.addEventListener('input', e => {
+      const id = e.target.dataset.suc, z = e.target.dataset.zonamix;
       const suc = state.sucursales.find(s => s.id === id);
       if (!suc) return;
-      suc.zonas[z] = e.target.checked;
+      if (!suc.mixZonas) suc.mixZonas = { Z1:0, Z2:0, Z3:0, Z4:0 };
+      suc.mixZonas[z] = +e.target.value || 0;
+      const totZ = totalMixZonas(suc);
+      const elTot = document.getElementById('sucZonasTotal-' + id);
+      if (elTot) {
+        elTot.textContent = totZ === 100 ? `Total: ${totZ}% ✓` : `Total: ${totZ}% ⚠️ debería ser 100%`;
+        elTot.classList.toggle('error', totZ !== 100);
+      }
       saveState();
       recalc();
     });
@@ -497,7 +547,7 @@ function renderTarifario() {
   if (!tbl) return;
   let html = `<thead><tr><th style="text-align:left;">Peso aforado</th>`;
   ZONAS.forEach((z, zi) => {
-    const sucsZona = state.sucursales.filter(s => s.zonas[ZONAS_KEY[zi]]);
+    const sucsZona = state.sucursales.filter(s => (+mixZonasSuc(s)[ZONAS_KEY[zi]] || 0) > 0);
     html += `<th class="ruta-header">${z}<br><span style="font-size:9px; opacity:0.7; font-weight:400;">${sucsZona.length} suc.</span></th>`;
   });
   html += `</tr></thead><tbody>`;
@@ -572,17 +622,18 @@ function renderEquilibrio() {
 
   let html = `<thead><tr>
     <th style="text-align:left;">Sucursal</th>
-    <th style="text-align:left;">Zonas</th>
+    <th style="text-align:left;">Mix de zonas</th>
     <th style="text-align:right;">Fijo mensual</th>
-    <th style="text-align:right;">Cobra/guía</th>
-    <th style="text-align:right;">Costo var/guía</th>
+    <th style="text-align:right;">Cobra/guía<br><span style="font-size:9px;opacity:.6;">ref. 5 KG</span></th>
+    <th style="text-align:right;">Costo var/guía<br><span style="font-size:9px;opacity:.6;">ref. 5 KG</span></th>
     <th style="text-align:right;">Contribución</th>
     <th style="text-align:right;">Equilibrio</th>
   </tr></thead><tbody>`;
 
   state.sucursales.forEach(suc => {
     const eq = equilibrioSucursal(suc);
-    const zonasTxt = eq.zonasAt.length > 0 ? eq.zonasAt.map(z => z.replace('Z','Z')).join(', ') : '—';
+    const mz = mixZonasSuc(suc);
+    const zonasTxt = eq.zonasAt.length > 0 ? eq.zonasAt.map(z => `${z} ${+mz[z]||0}%`).join(', ') : '—';
     let equilibrioCell;
     if (eq.guias === null) {
       equilibrioCell = `<span class="eq-neg">no rentable</span>`;
@@ -768,8 +819,7 @@ function verDetalleTarifario(id) {
   const e = cot.estado, d = cot.datos;
   let html = '';
   html += `<div class="detalle-block"><h4>Parámetros</h4><table class="detalle-table"><tbody>
-    <tr><td>Volumen mensual</td><td>${(e.volTotal||0).toLocaleString('es-AR')}</td></tr>
-    <tr><td>Margen</td><td>${e.margen||0}%</td></tr>
+    <tr><td>% de ganancia</td><td>${e.margen||0}%</td></tr>
     <tr><td>Fijo total (sucursales)</td><td>${fmt(cot.totalFijo||0)}</td></tr>
     <tr><td>Sucursales</td><td>${(e.sucursales||[]).length}</td></tr>
   </tbody></table></div>`;
@@ -886,7 +936,7 @@ function exportarExcelDesdeSnapshot(cot) {
     ['SOUTHPOST · Tarifario archivado (modelo sucursales v11)'], [],
     ['Título', cot.titulo], ['Fecha', new Date(cot.fecha).toLocaleString('es-AR')], [],
     ['Factor aforo', `1 m³ = ${FACTOR_AFORO} KG`],
-    ['Volumen mensual', e.volTotal], ['Margen', (e.margen||0)+'%'],
+    ['% de ganancia', (e.margen||0)+'%'],
     ['Fijo total (sucursales)', cot.totalFijo||0], ['Cantidad sucursales', (e.sucursales||[]).length],
   ]);
   ws1['!cols'] = [{wch:30},{wch:24}];
@@ -918,7 +968,7 @@ function exportarExcelDesdeSnapshot(cot) {
   (e.sucursales||[]).forEach(s => {
     CONCEPTOS_FIJOS.forEach(c => sData.push([s.nombre, c.label, s.fijos[c.key]||0]));
     sData.push([s.nombre, 'Troncal', s.troncal||0]);
-    sData.push([s.nombre, 'Zonas', ZONAS_KEY.filter(z=>s.zonas[z]).join(' ')]);
+    sData.push([s.nombre, 'Mix de zonas', ZONAS_KEY.map(z=>`${z} ${(mixZonasSuc(s)[z]||0)}%`).join('  ')]);
     RUTAS.forEach(r => {
       const rd = s.rutas[r.id];
       const veh = (e.vehiculos||[]).find(v=>v.id===rd.vehiculoId);

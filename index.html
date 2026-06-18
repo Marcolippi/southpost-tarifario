@@ -33,28 +33,9 @@
     </div>
   </header>
 
-  <!-- 01 — Parámetros generales -->
-  <div class="section">
-    <div class="section-head"><span class="section-num">01</span><h2>Parámetros generales</h2><span class="desc">Volumen mensual y margen objetivo</span></div>
-    <div class="globals">
-      <div class="globals-block">
-        <div class="label">Volumen mensual TOTAL</div>
-        <input type="number" id="volTotal" value="1000" min="1">
-        <div class="helper">Total de guías mensuales de toda la operación</div>
-      </div>
-      <div class="globals-block">
-        <div class="label">Margen objetivo (sobre venta)</div>
-        <input type="number" id="margen" value="30" min="0" max="99" step="0.1">
-        <div class="helper">precio = costo variable ÷ (1 - margen)</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
   <!-- 02 — Catálogo de vehículos -->
   <div class="section">
-    <div class="section-head"><span class="section-num">02</span><h2>Catálogo de vehículos</h2><span class="desc">Compartido por todas las sucursales · 1 m³ = 250 KG</span></div>
+    <div class="section-head"><span class="section-num">01</span><h2>Catálogo de vehículos</h2><span class="desc">Compartido por todas las sucursales · 1 m³ = 250 KG</span></div>
     <div class="vehiculos-container">
       <table class="tarif vehiculos-table" id="tablaVehiculos"></table>
       <button class="add-veh-btn" onclick="agregarVehiculo()">+ Agregar vehículo</button>
@@ -65,7 +46,7 @@
 
   <!-- 03 — Pallet de troncal -->
   <div class="section">
-    <div class="section-head"><span class="section-num">03</span><h2>Pallet de troncal</h2><span class="desc">Medida estándar del pallet · Compartido por todas las sucursales</span></div>
+    <div class="section-head"><span class="section-num">02</span><h2>Pallet de troncal</h2><span class="desc">Medida estándar del pallet · Compartido por todas las sucursales</span></div>
     <div class="troncal-container">
       <div class="troncal-pallet-info">
         <div class="pallet-label">Capacidad del pallet estándar</div>
@@ -85,7 +66,7 @@
 
   <!-- 04 — Mix de rutas -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">04</span><h2>Mix de rutas</h2><span class="desc">% del volumen por rango de km · Mismo mix para todas las sucursales</span></div>
+    <div class="section-head"><span class="section-num cyan">03</span><h2>Mix de rutas</h2><span class="desc">% del volumen por rango de km · Mismo mix para todas las sucursales</span></div>
     <div class="mix-rutas-panel">
       <div class="mix-rutas-grid" id="mixRutasGrid"></div>
       <div class="mix-rutas-total" id="mixRutasTotal">Total: 100%</div>
@@ -97,7 +78,7 @@
 
   <!-- 05 — Sucursales -->
   <div class="section">
-    <div class="section-head"><span class="section-num">05</span><h2>Sucursales</h2><span class="desc">Cada sucursal: fijos + zonas + troncal + última milla</span></div>
+    <div class="section-head"><span class="section-num">04</span><h2>Sucursales</h2><span class="desc">Cada sucursal: fijos + mix de zonas + troncal + última milla</span></div>
     <div class="sucursales-toolbar">
       <div class="suc-contador">Sucursales cargadas: <strong id="contadorSuc">0</strong></div>
       <button class="add-suc-btn" onclick="agregarSucursal()">+ Agregar sucursal</button>
@@ -107,22 +88,29 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 06 — Tarifario sugerido (editable) -->
+  <!-- 05 — Tarifario sugerido (editable) -->
   <div class="section">
-    <div class="section-head"><span class="section-num final">06</span><h2 class="final">Tarifario sugerido</h2><span class="desc">Precio por zona (solo variables + margen) · Editable</span></div>
+    <div class="section-head"><span class="section-num final">05</span><h2 class="final">Tarifario sugerido</h2><span class="desc">Precio por zona y rango · Sugerido editable</span></div>
     <div class="tarifario-toolbar">
+      <div class="margen-control">
+        <span class="margen-lbl">% de ganancia</span>
+        <input type="number" id="margenGlobal" value="30" min="0" max="99" step="0.1">
+        <span class="margen-help">se aplica al costo variable: precio = costo ÷ (1 − %)</span>
+      </div>
+      <button class="restaurar-btn" onclick="restaurarTodoTarifario()">↻ Restaurar todo a sugerido</button>
+    </div>
+    <div class="tarifario-toolbar" style="margin-top:0;">
       <div class="tarifario-leyenda">
         <span class="leyenda-item"><span class="manual-dot">●</span> celda editada manualmente</span>
         <span class="leyenda-sep">·</span>
         <span style="color:#666;">Tocá cualquier precio para editarlo a mano</span>
       </div>
-      <button class="restaurar-btn" onclick="restaurarTodoTarifario()">↻ Restaurar todo a sugerido</button>
     </div>
     <div class="tarifario-final active">
       <table class="output" id="tablaTarifario"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Los KG son <strong>aforados</strong>: peso_aforado = max(peso real, m³ × 250). El precio sale de los costos variables (última milla + troncal) ponderados por mix de rutas y promediados entre las sucursales que atienden cada zona, con el modelo aforo-vs-jornada. <strong>No incluye costos fijos</strong> (esos se cubren con el volumen, ver punto de equilibrio).
+      Los KG son <strong>aforados</strong>: peso_aforado = max(peso real, m³ × 250). El sugerido sale de los costos variables (última milla + troncal) ponderados por mix de rutas, más el % de ganancia, promediando las sucursales según el <strong>% que cada una dedica a cada zona</strong> (modelo aforo-vs-jornada). Se fuerza que <strong>Zona I ≤ II ≤ III ≤ IV</strong> en cada rango. <strong>No incluye costos fijos</strong> (esos se cubren con el volumen, ver punto de equilibrio).
     </div>
   </div>
 
@@ -130,18 +118,18 @@
 
   <!-- 07 — Punto de equilibrio por sucursal -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">07</span><h2>Punto de equilibrio por sucursal</h2><span class="desc">Guías mínimas para cubrir los fijos de cada sucursal</span></div>
+    <div class="section-head"><span class="section-num cyan">06</span><h2>Punto de equilibrio por sucursal</h2><span class="desc">Guías mínimas para cubrir los fijos de cada sucursal</span></div>
     <div class="output-table">
       <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
     <div style="margin-top:14px; font-size:11px; color:#666; font-style:italic;">
-      Cada sucursal cobra la <strong>tarifa publicada</strong> de las zonas que atiende (peso ref. 25 KG), pero con sus <strong>costos variables propios</strong>. La contribución (lo que sobra por guía) cubre sus fijos. El equilibrio te dice cuántas guías mensuales necesita esa sucursal para no perder plata.
+      Cada sucursal cobra la <strong>tarifa publicada</strong> de las zonas que atiende, ponderada por su <strong>mix de zonas</strong> (peso ref. 5 KG), pero con sus <strong>costos variables propios</strong>. La contribución (lo que sobra por guía) cubre sus fijos. El equilibrio te dice cuántas guías mensuales necesita esa sucursal para no perder plata.
     </div>
   </div>
 
   <!-- 08 — Historial -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">08</span><h2>Historial de tarifarios</h2><span class="desc">Últimas 50 versiones archivadas</span></div>
+    <div class="section-head"><span class="section-num cyan">07</span><h2>Historial de tarifarios</h2><span class="desc">Últimas 50 versiones archivadas</span></div>
     <div id="historialContainer">
       <div class="empty-historial" id="emptyHistorial">
         <div class="empty-icon">📋</div>
