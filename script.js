@@ -168,11 +168,19 @@ function totalMixZonas(suc) {
 
 // Costo variable puro (sin margen) ponderado por mix de rutas, para una sucursal y un peso.
 // Troncal amortizado por aforo del pallet + última milla con aforo-vs-jornada.
+// CRITERIO 1: las rutas SIN vehículo asignado se excluyen, y el mix se re-normaliza
+// entre las rutas que SÍ tienen vehículo (así una ruta no operada no abarata el costo).
 function costoVariableSucursal(suc, peso) {
   const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
-  const sumMix = totalMixRutas() > 0 ? totalMixRutas() : 1;
+  // sumatoria del mix solo de las rutas con vehículo asignado en esta sucursal
+  const rutasActivas = RUTAS.filter(r => {
+    const rd = suc.rutas[r.id];
+    return rd && rd.vehiculoId; // tiene vehículo => la sucursal opera esta ruta
+  });
+  const sumMixActivo = rutasActivas.reduce((a, r) => a + (+state.mixRutas[r.id] || 0), 0);
+  if (sumMixActivo <= 0) return 0; // ninguna ruta operable
   let cv = 0;
-  RUTAS.forEach(r => {
+  rutasActivas.forEach(r => {
     const rd = suc.rutas[r.id];
     const veh = vehiculoPorId(rd.vehiculoId);
     const m3 = veh ? veh.m3 : 0;
@@ -180,7 +188,8 @@ function costoVariableSucursal(suc, peso) {
     const entranJornada = rd.paradas || 0;                           // tope por jornada (paradas)
     const capEf = Math.min(entranAforo, entranJornada);              // cuello de botella real
     const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
-    cv += (peso * troncalKg + umGuia) * ((+state.mixRutas[r.id] || 0) / sumMix);
+    const pesoRuta = (+state.mixRutas[r.id] || 0) / sumMixActivo;    // mix re-normalizado
+    cv += (peso * troncalKg + umGuia) * pesoRuta;
   });
   return cv;
 }
