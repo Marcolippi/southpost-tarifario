@@ -24,7 +24,21 @@ const CONCEPTOS_FIJOS = [
   { key: 'otros',       label: 'Otros gastos' },
 ];
 
-const PESO_REF_EQUILIBRIO = 5; // peso de referencia para el punto de equilibrio (guías de 5 KG)
+const PESO_REF_EQUILIBRIO = 5; // (legacy) peso de referencia; ahora el equilibrio usa mix de pesos por sucursal
+
+// Bandas de peso para el mix por sucursal. El peso de cada banda es su TOPE.
+const BANDAS_PESO = [
+  { id: 'b5',  label: '1–5 KG',   tope: 5  },
+  { id: 'b10', label: '5–10 KG',  tope: 10 },
+  { id: 'b15', label: '10–15 KG', tope: 15 },
+  { id: 'b20', label: '15–20 KG', tope: 20 },
+  { id: 'b25', label: '20–25 KG', tope: 25 },
+  { id: 'b30', label: '25–30 KG', tope: 30 },
+  { id: 'b35', label: '30–35 KG', tope: 35 },
+  { id: 'b40', label: '35–40 KG', tope: 40 },
+  { id: 'b45', label: '40–45 KG', tope: 45 },
+  { id: 'b50', label: '45–50 KG', tope: 50 },
+];
 
 let _sucId = 0;
 function nextSucId() { _sucId++; return 'suc_' + Date.now() + '_' + _sucId; }
@@ -35,10 +49,12 @@ function sucursalNueva(nombre) {
     nombre: nombre || 'Nueva sucursal',
     fijos: {},
     mixZonas: { Z1: 0, Z2: 0, Z3: 0, Z4: 0 },
+    mixPesos: {},
     troncal: 0,
     rutas: {},
   };
   CONCEPTOS_FIJOS.forEach(c => suc.fijos[c.key] = 0);
+  BANDAS_PESO.forEach(b => suc.mixPesos[b.id] = 0);
   RUTAS.forEach(r => suc.rutas[r.id] = { vehiculoId: null, costoViaje: 0, paradas: 0 });
   return suc;
 }
@@ -68,6 +84,7 @@ function sucursalEjemplo() {
   const s = sucursalNueva('Rosario');
   s.fijos = { alquiler: 350000, personal: 600000, servicios: 120000, seguros: 80000, otros: 50000 };
   s.mixZonas = { Z1: 10, Z2: 50, Z3: 25, Z4: 15 };
+  s.mixPesos = { b5: 40, b10: 25, b15: 12, b20: 8, b25: 6, b30: 4, b35: 2, b40: 1, b45: 1, b50: 1 };
   s.troncal = 90000;
   s.rutas = {
     A: { vehiculoId: 'v_util',   costoViaje: 90000,  paradas: 55 },
@@ -166,6 +183,18 @@ function totalMixZonas(suc) {
   return ZONAS_KEY.reduce((a, z) => a + (+mz[z] || 0), 0);
 }
 
+// Mix de pesos de una sucursal (default seguro para sucursales viejas)
+function mixPesosSuc(suc) {
+  const mp = (suc.mixPesos && typeof suc.mixPesos === 'object') ? suc.mixPesos : {};
+  const out = {};
+  BANDAS_PESO.forEach(b => out[b.id] = +mp[b.id] || 0);
+  return out;
+}
+function totalMixPesos(suc) {
+  const mp = mixPesosSuc(suc);
+  return BANDAS_PESO.reduce((a, b) => a + (+mp[b.id] || 0), 0);
+}
+
 // Costo variable puro (sin margen) ponderado por mix de rutas, para una sucursal y un peso.
 // Troncal amortizado por aforo del pallet + última milla con aforo-vs-jornada.
 // CRITERIO 1: las rutas SIN vehículo asignado se excluyen, y el mix se re-normaliza
@@ -251,26 +280,47 @@ function esManual(zonaKey, peso) {
 }
 
 // EQUILIBRIO de una sucursal:
-// cobra la tarifa publicada (final) a 5 KG, ponderada por SU mix de zonas, con su costo variable propio a 5 KG.
+// - Costo variable: promedio ponderado por el MIX DE PESOS de la sucursal (peso = tope de cada banda).
+// - Precio que cobra: tarifa final ponderada por mix de zonas (precio) Y por mix de pesos (rango),
+//   usando el tope de cada banda como peso de la grilla de tarifas.
+// La contribución (precio − costo) cubre los fijos -> guías de equilibrio.
 function equilibrioSucursal(suc) {
   const mz = mixZonasSuc(suc);
+  const mp = mixPesosSuc(suc);
   const zonasAt = ZONAS_KEY.filter(z => (+mz[z] || 0) > 0);
   const sumZ = totalMixZonas(suc);
-  if (sumZ <= 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt, fijo: totalFijosSucursal(suc) };
-
-  // precio que cobra: tarifa final a PESO_REF_EQUILIBRIO ponderada por el mix de zonas de la sucursal
-  let num = 0, den = 0;
-  zonasAt.forEach(z => {
-    const p = precioFinalZona(z, PESO_REF_EQUILIBRIO);
-    const w = +mz[z] || 0;
-    if (p !== null && p !== undefined) { num += p * w; den += w; }
-  });
-  if (den <= 0) return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt, fijo: totalFijosSucursal(suc) };
-
-  const precioCobra = num / den;
-  const cv = costoVariableSucursal(suc, PESO_REF_EQUILIBRIO);
-  const contrib = precioCobra - cv;
+  const sumP = totalMixPesos(suc);
   const fijo = totalFijosSucursal(suc);
+
+  // Sin mix de zonas o sin mix de pesos no se puede calcular un promedio representativo
+  if (sumZ <= 0 || sumP <= 0) {
+    return { guias: null, precioCobra: 0, cv: 0, contrib: 0, zonasAt, fijo, motivo: sumP <= 0 ? 'sin mix de pesos' : 'sin mix de zonas' };
+  }
+
+  // Costo variable ponderado por mix de pesos (tope de banda)
+  let cvNum = 0;
+  BANDAS_PESO.forEach(b => {
+    const w = +mp[b.id] || 0;
+    if (w > 0) cvNum += costoVariableSucursal(suc, b.tope) * w;
+  });
+  const cv = cvNum / sumP;
+
+  // Precio cobrado: para cada banda, tarifa final ponderada por mix de zonas; luego promedio por mix de pesos
+  let precioNum = 0;
+  BANDAS_PESO.forEach(b => {
+    const wPeso = +mp[b.id] || 0;
+    if (wPeso <= 0) return;
+    let pZonaNum = 0, pZonaDen = 0;
+    zonasAt.forEach(z => {
+      const p = precioFinalZona(z, b.tope);
+      const wZona = +mz[z] || 0;
+      if (p !== null && p !== undefined) { pZonaNum += p * wZona; pZonaDen += wZona; }
+    });
+    if (pZonaDen > 0) precioNum += (pZonaNum / pZonaDen) * wPeso;
+  });
+  const precioCobra = precioNum / sumP;
+
+  const contrib = precioCobra - cv;
   const guias = contrib > 0 ? Math.ceil(fijo / contrib) : null;
   return { guias, precioCobra, cv, contrib, zonasAt, fijo };
 }
@@ -418,6 +468,18 @@ function renderSucursales() {
     });
     html += `</div><div class="suc-zonas-total ${totZ===100?'':'error'}" id="sucZonasTotal-${suc.id}">${totZ===100?`Total: ${totZ}% ✓`:`Total: ${totZ}% ⚠️ debería ser 100%`}</div>`;
 
+    // Mix de pesos (% de guías por rango/banda) — usado por el punto de equilibrio
+    const mp = mixPesosSuc(suc);
+    const totP = totalMixPesos(suc);
+    html += `<div class="suc-section-label">Mix de pesos — % de guías por rango (para el equilibrio)</div><div class="suc-pesos-mix">`;
+    BANDAS_PESO.forEach(b => {
+      html += `<div class="suc-peso-mix-item">
+        <label>${b.label}</label>
+        <div class="pmix-wrap"><input type="number" data-suc="${suc.id}" data-pesomix="${b.id}" value="${+mp[b.id]||0}" min="0" max="100" step="1"><span class="pct">%</span></div>
+      </div>`;
+    });
+    html += `</div><div class="suc-pesos-total" id="sucPesosTotal-${suc.id}">Suma: ${totP}%</div>`;
+
     // Troncal (un solo costo)
     html += `<div class="suc-section-label">Troncal — costo de pallet a esta sucursal</div>
       <div class="suc-troncal">
@@ -501,6 +563,20 @@ function bindSucursales() {
         elTot.textContent = totZ === 100 ? `Total: ${totZ}% ✓` : `Total: ${totZ}% ⚠️ debería ser 100%`;
         elTot.classList.toggle('error', totZ !== 100);
       }
+      saveState();
+      recalc();
+    });
+  });
+  // Mix de pesos (inputs %) — actualiza suma y recalcula
+  cont.querySelectorAll('input[data-pesomix]').forEach(el => {
+    el.addEventListener('input', e => {
+      const id = e.target.dataset.suc, b = e.target.dataset.pesomix;
+      const suc = state.sucursales.find(s => s.id === id);
+      if (!suc) return;
+      if (!suc.mixPesos) suc.mixPesos = {};
+      suc.mixPesos[b] = +e.target.value || 0;
+      const elTot = document.getElementById('sucPesosTotal-' + id);
+      if (elTot) elTot.textContent = 'Suma: ' + totalMixPesos(suc) + '%';
       saveState();
       recalc();
     });
@@ -633,8 +709,8 @@ function renderEquilibrio() {
     <th style="text-align:left;">Sucursal</th>
     <th style="text-align:left;">Mix de zonas</th>
     <th style="text-align:right;">Fijo mensual</th>
-    <th style="text-align:right;">Cobra/guía<br><span style="font-size:9px;opacity:.6;">ref. 5 KG</span></th>
-    <th style="text-align:right;">Costo var/guía<br><span style="font-size:9px;opacity:.6;">ref. 5 KG</span></th>
+    <th style="text-align:right;">Cobra/guía<br><span style="font-size:9px;opacity:.6;">prom. mix pesos</span></th>
+    <th style="text-align:right;">Costo var/guía<br><span style="font-size:9px;opacity:.6;">prom. mix pesos</span></th>
     <th style="text-align:right;">Contribución</th>
     <th style="text-align:right;">Equilibrio</th>
   </tr></thead><tbody>`;
@@ -645,7 +721,9 @@ function renderEquilibrio() {
     const zonasTxt = eq.zonasAt.length > 0 ? eq.zonasAt.map(z => `${z} ${+mz[z]||0}%`).join(', ') : '—';
     let equilibrioCell;
     if (eq.guias === null) {
-      equilibrioCell = `<span class="eq-neg">no rentable</span>`;
+      equilibrioCell = eq.motivo
+        ? `<span class="eq-neg" title="Cargá ese dato para calcular">${eq.motivo}</span>`
+        : `<span class="eq-neg">no rentable</span>`;
     } else {
       equilibrioCell = `<strong>${eq.guias.toLocaleString('es-AR')}</strong> guías/mes`;
     }
@@ -978,6 +1056,7 @@ function exportarExcelDesdeSnapshot(cot) {
     CONCEPTOS_FIJOS.forEach(c => sData.push([s.nombre, c.label, s.fijos[c.key]||0]));
     sData.push([s.nombre, 'Troncal', s.troncal||0]);
     sData.push([s.nombre, 'Mix de zonas', ZONAS_KEY.map(z=>`${z} ${(mixZonasSuc(s)[z]||0)}%`).join('  ')]);
+    sData.push([s.nombre, 'Mix de pesos', BANDAS_PESO.map(b=>`${b.label} ${(mixPesosSuc(s)[b.id]||0)}%`).join('  ')]);
     RUTAS.forEach(r => {
       const rd = s.rutas[r.id];
       const veh = (e.vehiculos||[]).find(v=>v.id===rd.vehiculoId);
