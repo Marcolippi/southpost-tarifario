@@ -50,11 +50,15 @@ function sucursalNueva(nombre) {
     fijos: {},
     mixZonas: { Z1: 0, Z2: 0, Z3: 0, Z4: 0 },
     mixPesos: {},
+    mixRutas: {},
     troncal: 0,
     rutas: {},
   };
   CONCEPTOS_FIJOS.forEach(c => suc.fijos[c.key] = 0);
   BANDAS_PESO.forEach(b => suc.mixPesos[b.id] = 0);
+  // arranca con el mix de rutas por defecto (50/25/15/7/3) para no arrancar en $0;
+  // el usuario lo puede editar libremente por sucursal.
+  RUTAS.forEach(r => suc.mixRutas[r.id] = +DEFAULTS.mixRutas[r.id] || 0);
   RUTAS.forEach(r => suc.rutas[r.id] = { vehiculoId: null, costoViaje: 0, paradas: 0 });
   return suc;
 }
@@ -85,6 +89,7 @@ function sucursalEjemplo() {
   s.fijos = { alquiler: 350000, personal: 600000, servicios: 120000, seguros: 80000, otros: 50000 };
   s.mixZonas = { Z1: 10, Z2: 50, Z3: 25, Z4: 15 };
   s.mixPesos = { b5: 40, b10: 25, b15: 12, b20: 8, b25: 6, b30: 4, b35: 2, b40: 1, b45: 1, b50: 1 };
+  s.mixRutas = { A: 50, B: 25, C: 15, D: 7, E: 3 };
   s.troncal = 90000;
   s.rutas = {
     A: { vehiculoId: 'v_util',   costoViaje: 90000,  paradas: 55 },
@@ -116,6 +121,15 @@ function loadState() {
         } else {
           base[k] = parsed[k];
         }
+      }
+      // Migración: sucursales guardadas antes de v11.1 no tenían mixRutas propio.
+      // Heredan el mix global que tenían configurado, como punto de partida editable.
+      if (Array.isArray(base.sucursales)) {
+        base.sucursales.forEach(s => {
+          if (!s.mixRutas || typeof s.mixRutas !== 'object') {
+            s.mixRutas = { ...base.mixRutas };
+          }
+        });
       }
       return base;
     }
@@ -153,8 +167,16 @@ function palletM3() {
 function palletKgAforado() {
   return palletM3() * FACTOR_AFORO;
 }
-function totalMixRutas() {
-  return RUTAS.reduce((acc, r) => acc + (+state.mixRutas[r.id] || 0), 0);
+function totalMixRutas(suc) {
+  const mr = mixRutasSuc(suc);
+  return RUTAS.reduce((acc, r) => acc + (+mr[r.id] || 0), 0);
+}
+// Mix de rutas de una sucursal (con fallback seguro para datos migrados o incompletos).
+function mixRutasSuc(suc) {
+  const mr = (suc && suc.mixRutas && typeof suc.mixRutas === 'object') ? suc.mixRutas : {};
+  const out = {};
+  RUTAS.forEach(r => out[r.id] = +mr[r.id] || 0);
+  return out;
 }
 function totalFijosSucursal(suc) {
   return CONCEPTOS_FIJOS.reduce((a, c) => a + (+suc.fijos[c.key] || 0), 0);
@@ -201,12 +223,13 @@ function totalMixPesos(suc) {
 // entre las rutas que SÍ tienen vehículo (así una ruta no operada no abarata el costo).
 function costoVariableSucursal(suc, peso) {
   const troncalKg = palletKgAforado() > 0 ? suc.troncal / palletKgAforado() : 0;
+  const mixR = mixRutasSuc(suc);
   // sumatoria del mix solo de las rutas con vehículo asignado en esta sucursal
   const rutasActivas = RUTAS.filter(r => {
     const rd = suc.rutas[r.id];
     return rd && rd.vehiculoId; // tiene vehículo => la sucursal opera esta ruta
   });
-  const sumMixActivo = rutasActivas.reduce((a, r) => a + (+state.mixRutas[r.id] || 0), 0);
+  const sumMixActivo = rutasActivas.reduce((a, r) => a + (+mixR[r.id] || 0), 0);
   if (sumMixActivo <= 0) return 0; // ninguna ruta operable
   let cv = 0;
   rutasActivas.forEach(r => {
@@ -217,7 +240,7 @@ function costoVariableSucursal(suc, peso) {
     const entranJornada = rd.paradas || 0;                           // tope por jornada (paradas)
     const capEf = Math.min(entranAforo, entranJornada);              // cuello de botella real
     const umGuia = capEf > 0 ? rd.costoViaje / capEf : 0;
-    const pesoRuta = (+state.mixRutas[r.id] || 0) / sumMixActivo;    // mix re-normalizado
+    const pesoRuta = (+mixR[r.id] || 0) / sumMixActivo;              // mix re-normalizado (propio de la sucursal)
     cv += (peso * troncalKg + umGuia) * pesoRuta;
   });
   return cv;
@@ -400,32 +423,7 @@ function eliminarVehiculo(i) {
   saveState(); renderVehiculos(); renderSucursales(); recalc();
 }
 
-function renderMixRutas() {
-  const grid = document.getElementById('mixRutasGrid');
-  if (!grid) return;
-  let html = '';
-  RUTAS.forEach(r => {
-    html += `<div class="mix-ruta-item">
-      <label>${r.label}</label><span class="km">${r.km}</span>
-      <div class="input-wrap"><input type="number" data-mix="${r.id}" value="${state.mixRutas[r.id]||0}" min="0" max="100" step="1"><span class="pct-symbol">%</span></div>
-    </div>`;
-  });
-  grid.innerHTML = html;
-  actualizarMixTotal();
-  grid.querySelectorAll('input').forEach(inp => {
-    inp.addEventListener('input', e => {
-      state.mixRutas[e.target.dataset.mix] = +e.target.value || 0;
-      saveState(); actualizarMixTotal(); recalc();
-    });
-  });
-}
-function actualizarMixTotal() {
-  const el = document.getElementById('mixRutasTotal');
-  if (!el) return;
-  const tot = totalMixRutas();
-  el.textContent = tot === 100 ? `Total: ${tot}%  ✓` : `Total: ${tot}%  ⚠️ debería ser 100%`;
-  el.classList.toggle('error', tot !== 100);
-}
+/* (El mix de rutas ahora se configura por sucursal, ver renderSucursales/bindSucursales) */
 
 /* ============= RENDER: SUCURSALES ============= */
 function renderSucursales() {
@@ -479,6 +477,18 @@ function renderSucursales() {
       </div>`;
     });
     html += `</div><div class="suc-pesos-total" id="sucPesosTotal-${suc.id}">Suma: ${totP}%</div>`;
+
+    // Mix de rutas (% de guías por rango de km) — propio de esta sucursal, usado en el costo variable
+    const mr = mixRutasSuc(suc);
+    const totR = totalMixRutas(suc);
+    html += `<div class="suc-section-label">Mix de rutas — % de guías por rango de km (para el costo variable)</div><div class="suc-rutas-mix">`;
+    RUTAS.forEach(r => {
+      html += `<div class="suc-ruta-mix-item">
+        <label>${r.label}</label><span class="suc-ruta-mix-km">${r.km}</span>
+        <div class="rmix-wrap"><input type="number" data-suc="${suc.id}" data-rutamix="${r.id}" value="${+mr[r.id]||0}" min="0" max="100" step="1"><span class="pct">%</span></div>
+      </div>`;
+    });
+    html += `</div><div class="suc-rutas-total ${totR===100?'':'error'}" id="sucRutasTotal-${suc.id}">${totR===100?`Total: ${totR}% ✓`:`Total: ${totR}% ⚠️ debería ser 100%`}</div>`;
 
     // Troncal (un solo costo)
     html += `<div class="suc-section-label">Troncal — costo de pallet a esta sucursal</div>
@@ -577,6 +587,24 @@ function bindSucursales() {
       suc.mixPesos[b] = +e.target.value || 0;
       const elTot = document.getElementById('sucPesosTotal-' + id);
       if (elTot) elTot.textContent = 'Suma: ' + totalMixPesos(suc) + '%';
+      saveState();
+      recalc();
+    });
+  });
+  // Mix de rutas (inputs %) — propio de la sucursal, actualiza total y recalcula
+  cont.querySelectorAll('input[data-rutamix]').forEach(el => {
+    el.addEventListener('input', e => {
+      const id = e.target.dataset.suc, r = e.target.dataset.rutamix;
+      const suc = state.sucursales.find(s => s.id === id);
+      if (!suc) return;
+      if (!suc.mixRutas) suc.mixRutas = {};
+      suc.mixRutas[r] = +e.target.value || 0;
+      const totR = totalMixRutas(suc);
+      const elTot = document.getElementById('sucRutasTotal-' + id);
+      if (elTot) {
+        elTot.textContent = totR === 100 ? `Total: ${totR}% ✓` : `Total: ${totR}% ⚠️ debería ser 100%`;
+        elTot.classList.toggle('error', totR !== 100);
+      }
       saveState();
       recalc();
     });
@@ -855,7 +883,7 @@ function recargarTarifario(id) {
   if (!cot) return;
   state = JSON.parse(JSON.stringify(cot.estado));
   saveState();
-  renderGlobales(); renderVehiculos(); renderMixRutas(); renderSucursales(); recalc();
+  renderGlobales(); renderVehiculos(); renderSucursales(); recalc();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast('Tarifario re-cargado');
 }
@@ -948,7 +976,7 @@ function resetAll() {
   state.sucursales = [sucursalEjemplo()];
   state.tarifarioManual = {};
   saveState();
-  renderGlobales(); renderVehiculos(); renderMixRutas(); renderSucursales(); recalc();
+  renderGlobales(); renderVehiculos(); renderSucursales(); recalc();
   toast('Datos reseteados');
 }
 
@@ -1057,6 +1085,7 @@ function exportarExcelDesdeSnapshot(cot) {
     sData.push([s.nombre, 'Troncal', s.troncal||0]);
     sData.push([s.nombre, 'Mix de zonas', ZONAS_KEY.map(z=>`${z} ${(mixZonasSuc(s)[z]||0)}%`).join('  ')]);
     sData.push([s.nombre, 'Mix de pesos', BANDAS_PESO.map(b=>`${b.label} ${(mixPesosSuc(s)[b.id]||0)}%`).join('  ')]);
+    sData.push([s.nombre, 'Mix de rutas', RUTAS.map(r=>`${r.label} ${(mixRutasSuc(s)[r.id]||0)}%`).join('  ')]);
     RUTAS.forEach(r => {
       const rd = s.rutas[r.id];
       const veh = (e.vehiculos||[]).find(v=>v.id===rd.vehiculoId);
@@ -1076,7 +1105,6 @@ function exportarExcelDesdeSnapshot(cot) {
 /* ============= INIT ============= */
 renderGlobales();
 renderVehiculos();
-renderMixRutas();
 renderSucursales();
 renderHistorial();
 recalc();

@@ -224,20 +224,6 @@ table.output tr.info-row td { background: var(--paper-2); font-size: 10px; color
 .troncal-table td.derived { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan-deep); font-weight: 700; text-align: right; background: rgba(43,212,217,0.04); }
 .troncal-table td.derived .sub { font-size: 9px; color: #888; font-weight: 400; display: block; margin-top: 2px; }
 
-/* MIX DE RUTAS */
-.mix-rutas-panel { background: white; border: 1px solid var(--rule); border-radius: 4px; padding: 20px 24px; }
-.mix-rutas-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 14px; }
-.mix-ruta-item { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: var(--paper); border: 1px solid var(--rule); border-radius: 2px; }
-.mix-ruta-item label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--cyan-deep); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.mix-ruta-item .km { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #888; }
-.mix-ruta-item .input-wrap { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
-.mix-ruta-item input[type=number] { flex: 1; padding: 8px 10px; border: 1px solid var(--rule); background: white; font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; text-align: right; color: var(--ink); }
-.mix-ruta-item input[type=number]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
-.mix-ruta-item .pct-symbol { font-family: 'Fraunces', serif; font-size: 18px; color: var(--cyan-deep); font-weight: 700; }
-.mix-rutas-total { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; padding: 10px 14px; background: var(--paper-2); border-left: 4px solid var(--success); color: var(--primary-deep); border-radius: 2px; }
-.mix-rutas-total.error { border-left-color: var(--danger); color: var(--danger); background: rgba(229,75,75,0.08); }
-.mix-rutas-helper { margin-top: 10px; font-size: 11px; color: #666; font-style: italic; }
-
 /* ============= V11 — SUCURSALES ============= */
 .sucursales-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .suc-contador { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--primary-deep); }
@@ -291,9 +277,23 @@ table.output tr.info-row td { background: var(--paper-2); font-size: 10px; color
 .suc-peso-mix-item input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
 .suc-peso-mix-item .pct { font-family: 'Fraunces', serif; font-size: 13px; color: var(--cyan-deep); font-weight: 700; }
 .suc-pesos-total { margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; padding: 7px 12px; background: var(--paper-2); border-left: 4px solid var(--cyan-deep); color: var(--primary-deep); border-radius: 2px; }
+
+/* Mix de rutas por sucursal (ex-global) */
+.suc-rutas-mix { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.suc-ruta-mix-item { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; }
+.suc-ruta-mix-item label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--cyan-deep); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.suc-ruta-mix-item .suc-ruta-mix-km { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #888; }
+.suc-ruta-mix-item .rmix-wrap { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.suc-ruta-mix-item input { flex: 1; padding: 7px 9px; border: 1px solid var(--rule); background: white; font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; text-align: right; color: var(--ink); }
+.suc-ruta-mix-item input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(30,75,168,0.12); }
+.suc-ruta-mix-item .pct { font-family: 'Fraunces', serif; font-size: 16px; color: var(--cyan-deep); font-weight: 700; }
+.suc-rutas-total { margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; padding: 7px 12px; background: var(--paper-2); border-left: 4px solid var(--success); color: var(--primary-deep); border-radius: 2px; }
+.suc-rutas-total.error { border-left-color: var(--danger); color: var(--danger); background: rgba(229,75,75,0.08); }
+
 @media (max-width: 700px) {
   .suc-pesos-mix { grid-template-columns: repeat(2, 1fr); }
   .suc-zonas-mix { grid-template-columns: repeat(2, 1fr); }
+  .suc-rutas-mix { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* Control de % de ganancia en tarifario */

@@ -16,7 +16,7 @@
 <div class="wrap">
 
   <header class="masthead">
-    <span class="badge">Calculadora · v11.0</span>
+    <span class="badge">Calculadora · v11.1</span>
     <div>
       <div class="logo-mark"><span class="logo-dot"></span> SOUTHPOST</div>
       <h1>Tarifario <em>por sucursales</em></h1>
@@ -64,21 +64,9 @@
 
   <div class="step-arrow">▼</div>
 
-  <!-- 04 — Mix de rutas -->
+  <!-- 04 — Sucursales -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">03</span><h2>Mix de rutas</h2><span class="desc">% del volumen por rango de km · Mismo mix para todas las sucursales</span></div>
-    <div class="mix-rutas-panel">
-      <div class="mix-rutas-grid" id="mixRutasGrid"></div>
-      <div class="mix-rutas-total" id="mixRutasTotal">Total: 100%</div>
-      <div class="mix-rutas-helper">Cada % representa qué porcentaje de tus guías cae en esa ruta dentro de cada sucursal.</div>
-    </div>
-  </div>
-
-  <div class="step-arrow">▼</div>
-
-  <!-- 05 — Sucursales -->
-  <div class="section">
-    <div class="section-head"><span class="section-num">04</span><h2>Sucursales</h2><span class="desc">Cada sucursal: fijos + mix de zonas + troncal + última milla</span></div>
+    <div class="section-head"><span class="section-num">03</span><h2>Sucursales</h2><span class="desc">Cada sucursal: fijos + mix de zonas + mix de pesos + mix de rutas + troncal + última milla</span></div>
     <div class="sucursales-toolbar">
       <div class="suc-contador">Sucursales cargadas: <strong id="contadorSuc">0</strong></div>
       <button class="add-suc-btn" onclick="agregarSucursal()">+ Agregar sucursal</button>
@@ -90,7 +78,7 @@
 
   <!-- 05 — Tarifario sugerido (editable) -->
   <div class="section">
-    <div class="section-head"><span class="section-num final">05</span><h2 class="final">Tarifario sugerido</h2><span class="desc">Precio por zona y rango · Sugerido editable</span></div>
+    <div class="section-head"><span class="section-num final">04</span><h2 class="final">Tarifario sugerido</h2><span class="desc">Precio por zona y rango · Sugerido editable</span></div>
     <div class="tarifario-toolbar">
       <div class="margen-control">
         <span class="margen-lbl">% de ganancia</span>
@@ -118,7 +106,7 @@
 
   <!-- 07 — Punto de equilibrio por sucursal -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">06</span><h2>Punto de equilibrio por sucursal</h2><span class="desc">Guías mínimas para cubrir los fijos de cada sucursal</span></div>
+    <div class="section-head"><span class="section-num cyan">05</span><h2>Punto de equilibrio por sucursal</h2><span class="desc">Guías mínimas para cubrir los fijos de cada sucursal</span></div>
     <div class="output-table">
       <table class="output equilibrio" id="tablaEquilibrio"></table>
     </div>
@@ -129,7 +117,7 @@
 
   <!-- 08 — Historial -->
   <div class="section">
-    <div class="section-head"><span class="section-num cyan">07</span><h2>Historial de tarifarios</h2><span class="desc">Últimas 50 versiones archivadas</span></div>
+    <div class="section-head"><span class="section-num cyan">06</span><h2>Historial de tarifarios</h2><span class="desc">Últimas 50 versiones archivadas</span></div>
     <div id="historialContainer">
       <div class="empty-historial" id="emptyHistorial">
         <div class="empty-icon">📋</div>
