@@ -823,15 +823,82 @@ function confirmarGuardarHistorial() {
   renderHistorial();
   toast('Tarifario archivado · Excel descargado');
 }
+
+/* ============= MODAL ACTUALIZACIÓN DE COSTOS ============= */
+// Acceso rápido para aplicar un aumento (o baja) % a los costos existentes de una sola vez,
+// en vez de tener que editar campo por campo cada mes.
+function iniciarActualizarCostos() {
+  const inp = document.getElementById('actualizarPct');
+  inp.value = '';
+  document.getElementById('chkActFijos').checked = true;
+  document.getElementById('chkActTroncal').checked = true;
+  document.getElementById('chkActViaje').checked = true;
+  actualizarResumenCostos();
+  document.getElementById('modalActualizarCostos').classList.add('active');
+  setTimeout(() => { inp.focus(); }, 100);
+}
+function cerrarModalActualizarCostos() { document.getElementById('modalActualizarCostos').classList.remove('active'); }
+function actualizarResumenCostos() {
+  const el = document.getElementById('actualizarResumen');
+  if (!el) return;
+  const nSuc = state.sucursales.length;
+  if (nSuc === 0) { el.textContent = 'No hay sucursales cargadas todavía.'; return; }
+  const fijos = document.getElementById('chkActFijos').checked;
+  const troncal = document.getElementById('chkActTroncal').checked;
+  const viaje = document.getElementById('chkActViaje').checked;
+  const partes = [];
+  if (fijos) partes.push(`${nSuc * CONCEPTOS_FIJOS.length} campo(s) de costos fijos`);
+  if (troncal) partes.push(`${nSuc} costo(s) de troncal`);
+  if (viaje) {
+    let nRutas = 0;
+    state.sucursales.forEach(s => RUTAS.forEach(r => { if (s.rutas[r.id] && (+s.rutas[r.id].costoViaje || 0) > 0) nRutas++; }));
+    partes.push(`${nRutas} costo(s) de viaje por ruta`);
+  }
+  el.textContent = partes.length > 0
+    ? `Se va a aplicar a ${nSuc} sucursal(es): ${partes.join(', ')}.`
+    : 'Seleccioná al menos una categoría para aplicar el ajuste.';
+}
+function confirmarActualizarCostos() {
+  const pct = parseFloat(document.getElementById('actualizarPct').value);
+  if (isNaN(pct) || pct === 0) { toast('Ingresá un porcentaje distinto de 0', true); return; }
+  if (pct <= -100) { toast('El porcentaje no puede ser -100% o menor', true); return; }
+  if (state.sucursales.length === 0) { toast('No hay sucursales cargadas', true); return; }
+  const fijos = document.getElementById('chkActFijos').checked;
+  const troncal = document.getElementById('chkActTroncal').checked;
+  const viaje = document.getElementById('chkActViaje').checked;
+  if (!fijos && !troncal && !viaje) { toast('Seleccioná al menos una categoría', true); return; }
+
+  const verbo = pct > 0 ? 'un aumento' : 'una baja';
+  const categorias = [fijos && 'costos fijos', troncal && 'troncal', viaje && 'costo de viaje por ruta'].filter(Boolean).join(', ');
+  if (!confirm(`¿Aplicar ${verbo} del ${Math.abs(pct)}% a: ${categorias}, en las ${state.sucursales.length} sucursales cargadas? Esta acción no se puede deshacer (salvo que la recargues desde el historial).`)) return;
+
+  const factor = 1 + pct / 100;
+  state.sucursales.forEach(suc => {
+    if (fijos) CONCEPTOS_FIJOS.forEach(c => { suc.fijos[c.key] = Math.round((+suc.fijos[c.key] || 0) * factor); });
+    if (troncal) suc.troncal = Math.round((+suc.troncal || 0) * factor);
+    if (viaje) RUTAS.forEach(r => {
+      if (suc.rutas[r.id]) suc.rutas[r.id].costoViaje = Math.round((+suc.rutas[r.id].costoViaje || 0) * factor);
+    });
+  });
+  saveState();
+  cerrarModalActualizarCostos();
+  renderSucursales();
+  recalc();
+  const signo = pct > 0 ? '+' : '';
+  toast(`Aplicado ${signo}${pct}% a ${categorias} en ${state.sucursales.length} sucursal(es)`);
+}
+
 document.addEventListener('click', e => {
   if (e.target.id === 'modalPDF') cerrarModal();
   if (e.target.id === 'modalGuardar') cerrarModalGuardar();
+  if (e.target.id === 'modalActualizarCostos') cerrarModalActualizarCostos();
   if (e.target.id === 'modalDetalle') cerrarModalDetalle();
 });
 document.addEventListener('keydown', e => {
-  const mPDF = document.getElementById('modalPDF'), mG = document.getElementById('modalGuardar'), mD = document.getElementById('modalDetalle');
+  const mPDF = document.getElementById('modalPDF'), mG = document.getElementById('modalGuardar'), mAC = document.getElementById('modalActualizarCostos'), mD = document.getElementById('modalDetalle');
   if (mPDF && mPDF.classList.contains('active')) { if (e.key === 'Escape') cerrarModal(); if (e.key === 'Enter') confirmarExportPDF(); }
   else if (mG && mG.classList.contains('active')) { if (e.key === 'Escape') cerrarModalGuardar(); if (e.key === 'Enter') confirmarGuardarHistorial(); }
+  else if (mAC && mAC.classList.contains('active')) { if (e.key === 'Escape') cerrarModalActualizarCostos(); if (e.key === 'Enter') confirmarActualizarCostos(); }
   else if (mD && mD.classList.contains('active')) { if (e.key === 'Escape') cerrarModalDetalle(); }
 });
 

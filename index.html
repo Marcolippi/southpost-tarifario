@@ -28,6 +28,7 @@
       <div class="save-state" id="saveState">● GUARDADO</div>
       <div id="lastUpdate">—</div>
       <button class="primary" onclick="iniciarExportPDF()">Exportar PDF</button>
+      <button class="update-btn" onclick="iniciarActualizarCostos()">↑ Actualizar costos</button>
       <button onclick="iniciarGuardarHistorial()">Guardar al historial</button>
       <button onclick="resetAll()">Reset</button>
     </div>
@@ -153,6 +154,27 @@
     <div class="input-label">Nombre del tarifario</div>
     <input type="text" class="client-input" id="modalGuardarClientName" placeholder="Ej: Tarifario Mayo 2026" autocomplete="off">
     <div class="modal-actions"><button class="modal-btn" onclick="cerrarModalGuardar()">Cancelar</button><button class="modal-btn primary" onclick="confirmarGuardarHistorial()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- MODAL actualizar costos -->
+<div class="modal-backdrop" id="modalActualizarCostos">
+  <div class="modal">
+    <div class="modal-logo"><span class="dot"></span><span class="text">SOUTHPOST</span></div>
+    <h2>Actualización de costos</h2>
+    <p class="subtitle">Aplicá un aumento porcentual a los costos existentes de una sola vez, en vez de editar campo por campo.</p>
+    <div class="input-label">% de aumento</div>
+    <div class="actualizar-pct-wrap">
+      <input type="number" class="client-input actualizar-pct-input" id="actualizarPct" placeholder="Ej: 8" step="0.1">
+      <span class="actualizar-pct-symbol">%</span>
+    </div>
+    <div class="actualizar-help">Usá un número negativo (ej: -5) si en vez de un aumento necesitás aplicar una baja.</div>
+    <div class="input-label" style="margin-top:18px;">Aplicar a</div>
+    <label class="actualizar-check"><input type="checkbox" id="chkActFijos" checked onchange="actualizarResumenCostos()"> Costos fijos <span>(alquiler, personal, servicios, seguros, otros gastos)</span></label>
+    <label class="actualizar-check"><input type="checkbox" id="chkActTroncal" checked onchange="actualizarResumenCostos()"> Costo de troncal</label>
+    <label class="actualizar-check"><input type="checkbox" id="chkActViaje" checked onchange="actualizarResumenCostos()"> Costo de viaje por ruta <span>(última milla)</span></label>
+    <div class="actualizar-resumen" id="actualizarResumen">Se aplicará a todas las sucursales cargadas.</div>
+    <div class="modal-actions"><button class="modal-btn" onclick="cerrarModalActualizarCostos()">Cancelar</button><button class="modal-btn primary" onclick="confirmarActualizarCostos()">Aplicar aumento</button></div>
   </div>
 </div>
 
